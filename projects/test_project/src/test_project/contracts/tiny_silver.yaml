@@ -1,0 +1,29 @@
+name: tiny_entity
+version: "1.0"
+table: tiny_entity
+layer: silver
+description: Minimal silver contract used to prove component reusability.
+columns:
+  - name: tiny_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^TINY-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "TINY-"
+  - name: label
+    type: string
+    nullable: false
+    allowed_values: [red, green, blue]
+  - name: value
+    type: integer
+    nullable: false
+    constraints:
+      min_value: 0
+      max_value: 100
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

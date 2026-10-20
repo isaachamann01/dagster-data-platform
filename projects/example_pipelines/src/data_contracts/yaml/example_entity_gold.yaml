@@ -1,0 +1,41 @@
+name: example_entity_gold
+version: "1.0"
+table: example_entity_gold
+layer: gold
+description: Curated gold contract for the generic example entity dataset.
+columns:
+  - name: entity_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^ENT-[0-9]{6}$"
+  - name: name
+    type: string
+    nullable: false
+    constraints:
+      min_length: 3
+      max_length: 40
+  - name: category
+    type: string
+    nullable: false
+    allowed_values: [alpha, beta, gamma]
+  - name: score
+    type: double
+    nullable: true
+    constraints:
+      min_value: 0
+      max_value: 100
+  - name: score_band
+    type: string
+    nullable: true
+    allowed_values: [low, medium, high]
+  - name: is_active
+    type: boolean
+  - name: event_date
+    type: date
+    nullable: false
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

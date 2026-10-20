@@ -1,0 +1,121 @@
+# Local stack: MinIO (S3-compatible storage), the synthetic-data service, and
+# Dagster (webserver + daemon). Trino is optional via `--profile trino`.
+#
+#   docker compose up --build
+#   Dagster UI: http://localhost:3000
+#   Synthetic API: http://localhost:8000/docs
+#   MinIO console: http://localhost:9001 (minioadmin / minioadmin)
+#
+# NOTE ON MINIO IMAGES: MinIO removed its official public images in 2026
+# (docker.io/minio/minio and minio/mc were deleted; quay.io/minio/* now
+# requires authentication). This file therefore defaults to the community
+# Bitnami legacy images, which bundle the same MinIO server/client. Override
+# with MINIO_IMAGE / MINIO_CLIENT_IMAGE if you have access to other mirrors.
+
+x-minio-image: &minio-image ${MINIO_IMAGE:-bitnamilegacy/minio:latest}
+x-minio-client-image: &minio-client-image ${MINIO_CLIENT_IMAGE:-bitnamilegacy/minio-client:latest}
+
+x-dagster-env: &dagster-env
+  DAGSTER_HOME: /app/.dagster
+  DATA_PLATFORM_REST_BASE_URL: http://synthetic-api:8000
+  DATA_PLATFORM_LAKEHOUSE_MODE: s3
+  DATA_PLATFORM_S3_ENDPOINT_URL: http://minio:9000
+  DATA_PLATFORM_S3_ACCESS_KEY_ID: minioadmin
+  DATA_PLATFORM_S3_SECRET_ACCESS_KEY: minioadmin
+  DATA_PLATFORM_S3_BUCKET: lakehouse
+  DATA_PLATFORM_S3_BASE_PREFIX: medallion
+  DATA_PLATFORM_S3_REGION: us-east-1
+  DATA_PLATFORM_S3_USE_SSL: "false"
+  DATA_PLATFORM_SPARK_MODE: local
+  DATA_PLATFORM_SPARK_MASTER: "local[2]"
+  DATA_PLATFORM_SPARK_APP_NAME: medallion-compose
+  DATA_PLATFORM_SPARK_WAREHOUSE_DIR: /tmp/spark-warehouse
+  # Hadoop AWS 3.5.0 matches the Hadoop version bundled with Spark 4.2.0.
+  DATA_PLATFORM_SPARK_EXTRA_PACKAGES: org.apache.hadoop:hadoop-aws:3.5.0
+  DATA_PLATFORM_TRINO_ENABLED: "false"
+
+services:
+  minio:
+    image: *minio-image
+    command: server /data --console-address ":9001"
+    # The Bitnami image runs as uid 1001; a freshly created named volume is
+    # root-owned, so run as root for local development (upstream behaviour).
+    user: "0"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  minio-init:
+    image: *minio-client-image
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /opt/bitnami/minio-client/bin/mc alias set local http://minio:9000 minioadmin minioadmin &&
+        /opt/bitnami/minio-client/bin/mc mb --ignore-existing local/lakehouse &&
+        echo 'bucket ready'
+
+  synthetic-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    environment:
+      SYNTHETIC_API_CONTRACTS_DIR: /app/projects/example_pipelines/src/data_contracts/yaml
+      SYNTHETIC_API_HOST: 0.0.0.0
+      SYNTHETIC_API_PORT: "8000"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dagster
+    command: dagster-webserver -h 0.0.0.0 -p 3000 -m example_pipelines.definitions
+    environment: *dagster-env
+    ports:
+      - "3000:3000"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      synthetic-api:
+        condition: service_healthy
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dagster
+    command: dagster-daemon run -m example_pipelines.definitions
+    environment: *dagster-env
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      synthetic-api:
+        condition: service_healthy
+
+  trino:
+    image: trinodb/trino:latest
+    profiles: ["trino"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./docker/trino/catalog:/etc/trino/catalog:ro
+
+volumes:
+  minio-data:

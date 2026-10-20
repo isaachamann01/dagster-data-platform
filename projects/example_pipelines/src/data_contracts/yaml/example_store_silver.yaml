@@ -1,0 +1,38 @@
+name: example_store
+version: "1.0"
+table: example_store
+layer: silver
+description: Parent contract in the related parent-child example.
+columns:
+  - name: store_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^STORE-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "STORE-"
+  - name: store_name
+    type: string
+    nullable: false
+    constraints:
+      min_length: 3
+      max_length: 32
+  - name: region
+    type: string
+    nullable: false
+    allowed_values: [emea, amer, apac]
+  - name: event_date
+    type: date
+    nullable: false
+    synthetic:
+      start_date: 2026-01-01
+      end_date: 2026-03-31
+  - name: created_at
+    type: timestamp
+    nullable: true
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

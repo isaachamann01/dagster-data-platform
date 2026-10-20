@@ -1,0 +1,3 @@
+# Local-development Dagster instance config.
+telemetry:
+  enabled: false

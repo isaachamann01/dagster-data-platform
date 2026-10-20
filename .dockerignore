@@ -1,0 +1,14 @@
+# Ignore local/dev artifacts so the Docker build context stays small.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git/
+lakehouse/
+warehouse/
+.spark-warehouse/
+metastore_db/
+derby.log
+tmp/

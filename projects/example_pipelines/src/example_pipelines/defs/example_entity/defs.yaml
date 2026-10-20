@@ -1,0 +1,31 @@
+# Independent generic example pipeline with daily partitioning.
+#
+# Asset keys generated:
+#   [example_entity, bronze, example_entity]
+#   [example_entity, silver, example_entity]
+#   [example_entity, gold, example_entity_gold]
+type: data_platform_common.components.medallion_factory.MedallionFactory
+attributes:
+  pipeline_name: example_entity
+  source:
+    type: rest
+    resource_key: rest_client
+    route: generate/example_entity
+    table_name: example_entity
+    response_path: rows
+  contracts:
+    silver: data_contracts.get_example_silver_contract_path
+    gold: data_contracts.get_example_gold_contract_path
+  merge_keys:
+    - entity_id
+  silver_transformations:
+    - data_platform_common.transformations.json_to_dataframe
+    - example_pipelines.transformations.clean_data
+  gold_transformations:
+    - example_pipelines.transformations.add_score_band
+    - data_platform_common.transformations.drop_columns_not_in_contract
+  partitioning:
+    mode: daily
+    start: "2026-01-01"
+    timezone: UTC
+    partition_column: event_date

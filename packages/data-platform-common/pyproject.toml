@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "data-platform-common"
+version = "0.1.0"
+description = "Reusable contract-driven medallion components, resources, and utilities for Dagster"
+requires-python = ">=3.12"
+dependencies = [
+    "dagster>=1.13,<1.14",
+    "pydantic>=2.13,<3",
+    "PyYAML>=6.0",
+    "requests>=2.32",
+    "pyspark>=4.0.1,<4.3",
+    "delta-spark>=4.0,<4.5",
+]
+
+[project.optional-dependencies]
+s3 = ["boto3>=1.35"]
+trino = ["trino>=0.336"]
+service = ["fastapi>=0.115", "uvicorn>=0.30"]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "types-PyYAML",
+    "types-requests",
+    "httpx>=0.28",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/data_platform_common"]
+
+[tool.dg]
+project.root_module = "data_platform_common"
+
+[tool.dagster]
+module_name = "data_platform_common.definitions"

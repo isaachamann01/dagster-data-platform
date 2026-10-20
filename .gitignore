@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local state
+lakehouse/
+warehouse/
+.spark-warehouse/
+metastore_db/
+derby.log
+tmp/
+.env
+
+# IDE
+.idea/
+.vscode/
+*.iml

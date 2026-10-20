@@ -1,0 +1,6 @@
+# Project config for Dagster Components discovery.
+#
+# This file lives inside the package so that installed-wheel layout resolution
+# works the same way as the editable checkout layout.
+[project]
+root_module = "test_project"

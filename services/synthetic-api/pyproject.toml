@@ -1,0 +1,18 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "synthetic-api"
+version = "0.1.0"
+description = "Generic FastAPI synthetic-data generation service driven by data contracts"
+requires-python = ">=3.12"
+dependencies = [
+    "data-platform-common",
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "PyYAML>=6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/synthetic_api"]

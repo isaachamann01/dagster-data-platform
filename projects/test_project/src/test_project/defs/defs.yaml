@@ -1,0 +1,21 @@
+# Minimal project proving the MedallionFactory component is reusable with no
+# custom Python transformations and no example_pipelines dependency at all.
+# Snapshot mode: every run rewrites the tiny tables from the REST source.
+type: data_platform_common.components.medallion_factory.MedallionFactory
+attributes:
+  pipeline_name: tiny_entity
+  source:
+    type: rest
+    resource_key: rest_client
+    route: generate/tiny_entity
+    table_name: tiny_entity
+    response_path: rows
+  contracts:
+    silver: test_project.contracts.get_tiny_silver_contract_path
+    gold: test_project.contracts.get_tiny_gold_contract_path
+  silver_transformations:
+    - data_platform_common.transformations.json_to_dataframe
+  gold_transformations:
+    - data_platform_common.transformations.drop_columns_not_in_contract
+  partitioning:
+    mode: full_snapshot

@@ -1,0 +1,10 @@
+# Project config for Dagster Components discovery.
+#
+# This file lives inside the package (not only at the repo root) so that
+# `load_from_defs_folder` can resolve the project when the package is installed
+# as a wheel into site-packages, where no repository pyproject.toml exists.
+[project]
+root_module = "example_pipelines"
+# Sibling packages whose dotted references are trusted from this project's
+# defs.yaml files (contracts live in their own top-level package).
+trusted_prefixes = ["data_contracts"]

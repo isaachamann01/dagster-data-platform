@@ -1,0 +1,21 @@
+# Synthetic-data FastAPI service image.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    SYNTHETIC_API_CONTRACTS_DIR=/app/projects/example_pipelines/src/data_contracts/yaml
+
+WORKDIR /app
+
+COPY packages/data-platform-common /app/packages/data-platform-common
+COPY projects/example_pipelines /app/projects/example_pipelines
+COPY services/synthetic-api /app/services/synthetic-api
+
+RUN pip install --no-cache-dir \
+        ./packages/data-platform-common \
+        ./projects/example_pipelines \
+        ./services/synthetic-api
+
+EXPOSE 8000
+CMD ["uvicorn", "synthetic_api.app:app", "--host", "0.0.0.0", "--port", "8000"]

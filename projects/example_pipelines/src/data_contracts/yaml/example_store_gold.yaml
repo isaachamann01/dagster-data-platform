@@ -1,0 +1,29 @@
+name: example_store_gold
+version: "1.0"
+table: example_store_gold
+layer: gold
+description: Curated gold contract for the parent store dataset.
+columns:
+  - name: store_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^STORE-[0-9]{6}$"
+  - name: store_name
+    type: string
+    nullable: false
+    constraints:
+      min_length: 3
+      max_length: 32
+  - name: region
+    type: string
+    nullable: false
+    allowed_values: [emea, amer, apac]
+  - name: event_date
+    type: date
+    nullable: false
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

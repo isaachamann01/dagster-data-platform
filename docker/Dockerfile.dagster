@@ -1,0 +1,31 @@
+# Dagster webserver + daemon image: Python 3.12, Java 21 (for local Spark), and
+# every workspace package installed from source.
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DAGSTER_HOME=/app/.dagster
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openjdk-21-jre-headless curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY packages/data-platform-common /app/packages/data-platform-common
+COPY services/synthetic-api /app/services/synthetic-api
+COPY projects/example_pipelines /app/projects/example_pipelines
+COPY projects/test_project /app/projects/test_project
+
+RUN pip install --no-cache-dir \
+        ./packages/data-platform-common \
+        ./services/synthetic-api \
+        ./projects/example_pipelines \
+        ./projects/test_project \
+        "dagster-webserver==1.13.24"
+
+RUN mkdir -p /app/.dagster
+COPY docker/dagster.yaml /app/.dagster/dagster.yaml
+
+EXPOSE 3000

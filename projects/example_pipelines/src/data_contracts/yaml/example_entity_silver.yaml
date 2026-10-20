@@ -1,0 +1,81 @@
+name: example_entity
+version: "1.0"
+table: example_entity
+layer: silver
+description: Silver contract for the generic example entity dataset.
+columns:
+  - name: entity_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^ENT-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "ENT-"
+  - name: name
+    type: string
+    nullable: false
+    constraints:
+      min_length: 3
+      max_length: 40
+  - name: category
+    type: string
+    nullable: false
+    allowed_values: [alpha, beta, gamma]
+  - name: score
+    type: double
+    nullable: true
+    constraints:
+      min_value: 0
+      max_value: 100
+  - name: is_active
+    type: boolean
+    default: true
+  - name: event_date
+    type: date
+    nullable: false
+    synthetic:
+      start_date: 2026-01-01
+      end_date: 2026-03-31
+  - name: created_at
+    type: timestamp
+    nullable: true
+  - name: updated_at
+    type: timestamp
+    nullable: true
+  - name: tags
+    type: array
+    nullable: true
+    constraints:
+      max_items: 4
+    items:
+      name: tag
+      type: string
+      constraints:
+        min_length: 2
+        max_length: 12
+  - name: details
+    type: struct
+    nullable: true
+    fields:
+      - name: region
+        type: string
+        allowed_values: [emea, amer, apac]
+      - name: rank
+        type: integer
+        constraints:
+          min_value: 1
+          max_value: 5
+  - name: owner_email
+    type: string
+    nullable: true
+    constraints:
+      regex: "^[a-z0-9._-]+@[a-z0-9-]+\\.[a-z]{2,4}$"
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1
+  - name: category_always_present
+    type: not_null
+    columns: [category]

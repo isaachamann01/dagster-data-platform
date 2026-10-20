@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "example-pipelines"
+version = "0.1.0"
+description = "Example contract-driven medallion pipelines"
+requires-python = ">=3.12"
+dependencies = ["data-platform-common"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/example_pipelines", "src/data_contracts"]
+
+[tool.dg]
+project.root_module = "example_pipelines"
+project.trusted_prefixes = ["data_contracts"]
+
+[tool.dagster]
+module_name = "example_pipelines.definitions"
+registry_modules = [
+    "data_platform_common.components.medallion_factory",
+    "data_platform_common.components.data_vault_factory",
+]

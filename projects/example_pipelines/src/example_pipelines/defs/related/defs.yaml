@@ -1,0 +1,52 @@
+# Related parent-child example. This single file contains two YAML documents;
+# each document is an independently configured pipeline with its own assets.
+#
+# Parent: [example_store, bronze|silver, example_store], [example_store, gold, example_store_gold]
+# Child:  [example_order, bronze|silver, example_order], [example_order, gold, example_order_gold]
+#
+# The child's silver contract declares a foreign key to 'example_store', so the
+# generated foreign-key asset check and the child assets depend on the parent
+# silver asset.
+type: data_platform_common.components.medallion_factory.MedallionFactory
+attributes:
+  pipeline_name: example_store
+  source:
+    type: rest
+    resource_key: rest_client
+    route: generate/example_store
+    table_name: example_store
+    response_path: rows
+  contracts:
+    silver: data_contracts.get_example_store_silver_contract_path
+    gold: data_contracts.get_example_store_gold_contract_path
+  merge_keys:
+    - store_id
+  silver_transformations:
+    - data_platform_common.transformations.json_to_dataframe
+    - example_pipelines.transformations.titlecase_store_name
+  gold_transformations:
+    - data_platform_common.transformations.drop_columns_not_in_contract
+  partitioning:
+    mode: unpartitioned
+---
+type: data_platform_common.components.medallion_factory.MedallionFactory
+attributes:
+  pipeline_name: example_order
+  source:
+    type: rest
+    resource_key: rest_client
+    route: generate/example_order
+    table_name: example_order
+    response_path: rows
+  contracts:
+    silver: data_contracts.get_example_order_silver_contract_path
+    gold: data_contracts.get_example_order_gold_contract_path
+  merge_keys:
+    - order_id
+  silver_transformations:
+    - data_platform_common.transformations.json_to_dataframe
+  gold_transformations:
+    - example_pipelines.transformations.add_order_total
+    - data_platform_common.transformations.drop_columns_not_in_contract
+  partitioning:
+    mode: unpartitioned

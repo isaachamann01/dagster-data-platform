@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "test-project"
+version = "0.1.0"
+description = "Minimal separate Dagster project proving the MedallionFactory component is reusable"
+requires-python = ">=3.12"
+dependencies = ["data-platform-common"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/test_project"]
+
+[tool.dg]
+project.root_module = "test_project"
+
+[tool.dagster]
+module_name = "test_project.definitions"

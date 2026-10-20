@@ -1,0 +1,46 @@
+name: example_order
+version: "1.0"
+table: example_order
+layer: silver
+description: Child contract in the related parent-child example.
+columns:
+  - name: order_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^ORD-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "ORD-"
+  - name: store_id
+    type: string
+    nullable: false
+    references:
+      contract: example_store
+      columns: [store_id]
+  - name: quantity
+    type: integer
+    nullable: false
+    constraints:
+      min_value: 1
+      max_value: 10
+  - name: unit_price
+    type: double
+    nullable: false
+    constraints:
+      min_value: 0.5
+      max_value: 500
+  - name: event_date
+    type: date
+    nullable: false
+    synthetic:
+      start_date: 2026-01-01
+      end_date: 2026-03-31
+  - name: created_at
+    type: timestamp
+    nullable: true
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

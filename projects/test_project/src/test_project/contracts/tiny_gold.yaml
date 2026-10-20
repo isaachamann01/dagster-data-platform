@@ -1,0 +1,20 @@
+name: tiny_entity_gold
+version: "1.0"
+table: tiny_entity_gold
+layer: gold
+description: Minimal gold contract used to prove component reusability.
+columns:
+  - name: tiny_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^TINY-[0-9]{6}$"
+  - name: label
+    type: string
+    nullable: false
+    allowed_values: [red, green, blue]
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1
