@@ -48,7 +48,7 @@ def _materialize(
     partition_key: str | None = None,
 ) -> dg.ExecuteInProcessResult:
     return dg.materialize(
-        list(defs.assets or []),
+        [asset for asset in defs.assets or [] if isinstance(asset, dg.AssetsDefinition)],
         resources=resources,
         selection=[dg.AssetKey(key.split("/")) for key in keys],
         partition_key=partition_key,

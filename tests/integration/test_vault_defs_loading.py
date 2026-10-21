@@ -17,6 +17,8 @@ VAULT_KEYS = {
 
 def _deps(definition: dg.Definitions, key_string: str) -> set[str]:
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             if key.to_user_string() == key_string:
                 return {parent.to_user_string() for parent in assets.asset_deps.get(key, set())}
@@ -33,6 +35,8 @@ def _check_specs(definition: dg.Definitions) -> list[tuple[str, str]]:
 
 def _asset_metadata(definition: dg.Definitions, key_string: str) -> dict:
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             if key.to_user_string() == key_string:
                 return dict(assets.metadata_by_key.get(key, {}))
@@ -40,7 +44,12 @@ def _asset_metadata(definition: dg.Definitions, key_string: str) -> dict:
 
 
 def test_vault_assets_are_generated(example_defs: dg.Definitions) -> None:
-    keys = {key.to_user_string() for assets in example_defs.assets or [] for key in assets.keys}
+    keys = {
+        key.to_user_string()
+        for assets in example_defs.assets or []
+        if isinstance(assets, dg.AssetsDefinition)
+        for key in assets.keys
+    }
     assert keys >= VAULT_KEYS
 
 

@@ -10,6 +10,8 @@ import dagster as dg
 def _asset_keys(definition: dg.Definitions) -> set[str]:
     keys: set[str] = set()
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             keys.add(key.to_user_string())
     return keys
@@ -44,6 +46,8 @@ def test_asset_checks_are_contract_derived() -> None:
 def test_full_snapshot_pipeline_is_unpartitioned() -> None:
     defs = dg.load_from_defs_folder(path_within_project=Path(__file__))
     for assets in defs.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             if key.path[-2:] == ["silver", "tiny_entity"]:
                 assert assets.partitions_def is None

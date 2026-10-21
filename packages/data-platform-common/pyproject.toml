@@ -24,6 +24,7 @@ dev = [
     "pytest>=8.3",
     "ruff>=0.9",
     "mypy>=1.14",
+    "ty>=0.0.90,<0.1",
     "types-PyYAML",
     "types-requests",
     "httpx>=0.28",

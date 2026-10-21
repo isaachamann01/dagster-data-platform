@@ -27,6 +27,7 @@ from data_platform_common.datavault.config import (
     SatelliteSpec,
     VaultSourceSpec,
 )
+from data_platform_common.datavault.hashing import HashAlgorithm
 from data_platform_common.errors import ContractError
 from data_platform_common.spark_types import METADATA_COLUMN_PREFIX
 
@@ -40,7 +41,7 @@ class HashConfig:
     """How one hash key / hashdiff is computed."""
 
     columns: tuple[str, ...]
-    algorithm: str
+    algorithm: HashAlgorithm
     delimiter: str
     prefix: str | None
     normalize: bool
@@ -119,7 +120,7 @@ class ResolvedSatellite:
         return hash_values_by_column(
             row,
             self.parent_columns,
-            algorithm=self.parent_hash.algorithm,  # type: ignore[arg-type]
+            algorithm=self.parent_hash.algorithm,
             delimiter=self.parent_hash.delimiter,
             prefix=self.parent_hash.prefix,
             normalize=self.parent_hash.normalize,

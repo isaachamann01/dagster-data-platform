@@ -30,6 +30,8 @@ EXPECTED_ASSETS = {
 def _keys(definition: dg.Definitions) -> set[str]:
     keys: set[str] = set()
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             keys.add(key.to_user_string())
     return keys
@@ -37,6 +39,8 @@ def _keys(definition: dg.Definitions) -> set[str]:
 
 def _deps(definition: dg.Definitions, key_string: str) -> set[str]:
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             if key.to_user_string() == key_string:
                 return {parent.to_user_string() for parent in assets.asset_deps.get(key, set())}
@@ -73,6 +77,8 @@ def test_bronze_silver_gold_dependency_graph(example_defs: dg.Definitions) -> No
 def test_partitioning_modes_are_applied(example_defs: dg.Definitions) -> None:
     by_key: dict[str, dg.AssetsDefinition] = {}
     for assets in example_defs.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             by_key[key.to_user_string()] = assets
     daily = by_key["example_entity/silver/example_entity"].partitions_def

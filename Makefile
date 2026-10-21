@@ -2,7 +2,7 @@ PYTHON ?= python3
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: bootstrap format check lint types test smoke api dagster up down
+.PHONY: bootstrap format check lint types ty test smoke api dagster up down
 
 bootstrap:
 	bash scripts/bootstrap.sh
@@ -14,9 +14,13 @@ check: format
 	$(BIN)/ruff format --check .
 	$(BIN)/ruff check .
 	$(BIN)/mypy
+	$(BIN)/ty check
 
 types:
 	$(BIN)/mypy
+
+ty:
+	$(BIN)/ty check
 
 test:
 	$(BIN)/pytest -m "not docker and not slow"

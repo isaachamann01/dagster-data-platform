@@ -49,7 +49,7 @@ def read_source_table(spark: Any, lakehouse: Any, source: ResolvedSource) -> Dat
 def _hash_column(config: HashConfig, *, alias: str) -> F.Column:
     return hash_expression(
         config.columns,
-        algorithm=config.algorithm,  # type: ignore[arg-type]
+        algorithm=config.algorithm,
         delimiter=config.delimiter,
         prefix=config.prefix,
         normalize=config.normalize,

@@ -92,7 +92,8 @@ def _annotation_for(column: ColumnContract) -> Any:
 
     if column.allowed_values is not None:
         base = Annotated[
-            base, AfterValidator(partial(_allowed_check, allowed=column.allowed_values))
+            base,  # ty: ignore[invalid-type-form]
+            AfterValidator(partial(_allowed_check, allowed=column.allowed_values)),
         ]
     return base
 
@@ -106,7 +107,7 @@ def _build_struct_model(name: str, fields: list[ColumnContract]) -> type[BaseMod
             default = field_spec.default
             annotation = annotation | None
         definitions[field_spec.name] = (annotation, default)
-    return create_model(  # type: ignore[call-overload]
+    return create_model(  # type: ignore[call-overload]  # ty: ignore[no-matching-overload]
         f"{name}_struct",
         __config__=ConfigDict(extra="forbid"),
         **definitions,
@@ -124,7 +125,7 @@ def build_row_model(contract: DataContract) -> type[BaseModel]:
             default = column.default
             annotation = annotation | None
         definitions[column.name] = (annotation, default)
-    return create_model(  # type: ignore[call-overload]
+    return create_model(  # type: ignore[call-overload]  # ty: ignore[no-matching-overload]
         f"{contract.name}_row",
         __config__=ConfigDict(extra="forbid"),
         **definitions,

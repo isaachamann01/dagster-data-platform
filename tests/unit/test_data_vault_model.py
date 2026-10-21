@@ -303,7 +303,7 @@ def test_link_requires_a_source_with_all_key_columns() -> None:
 
 def test_link_relationship_requires_source() -> None:
     with pytest.raises(ValidationError):
-        LinkRelationship(hub="order", columns=["order_id"])
+        LinkRelationship.model_validate({"hub": "order", "columns": ["order_id"]})
 
 
 def test_unknown_satellite_parent_rejected() -> None:

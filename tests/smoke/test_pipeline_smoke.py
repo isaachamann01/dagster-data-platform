@@ -42,7 +42,7 @@ def _materialize(
     partition_key: str | None = None,
 ) -> dg.ExecuteInProcessResult:
     return dg.materialize(
-        list(defs.assets or []),
+        [asset for asset in defs.assets or [] if isinstance(asset, dg.AssetsDefinition)],
         resources=resources,
         selection=[dg.AssetKey(key.split("/")) for key in keys],
         partition_key=partition_key,
@@ -60,6 +60,8 @@ def test_smoke_definitions_load_graph_and_multi_document(example_defs: dg.Defini
     keys: set[str] = set()
     deps: dict[str, set[str]] = {}
     for assets in example_defs.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             keys.add(key.to_user_string())
             deps[key.to_user_string()] = {

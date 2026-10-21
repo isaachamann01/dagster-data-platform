@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 from types import SimpleNamespace
+from typing import cast
 
+import dagster as dg
 import pytest
 from pydantic import ValidationError
 
@@ -46,7 +48,7 @@ def test_daily_and_hourly_partitions() -> None:
 
 
 def test_date_objects_are_coerced_to_iso_strings() -> None:
-    config = PartitioningConfig(mode="daily", start=date(2026, 1, 1))
+    config = PartitioningConfig.model_validate({"mode": "daily", "start": date(2026, 1, 1)})
     assert config.start == "2026-01-01"
 
 
@@ -54,7 +56,7 @@ def test_dynamic_partition_name_is_pipeline_scoped() -> None:
     definition = build_partitions_definition(
         PartitioningConfig(mode="dynamic"), pipeline_name="orders"
     )
-    assert definition is not None
+    assert isinstance(definition, dg.DynamicPartitionsDefinition)
     assert definition.name == "orders_partitions"
 
 
@@ -67,7 +69,7 @@ def test_multi_dimensional_partitions() -> None:
         ],
     )
     definition = build_partitions_definition(config, pipeline_name="p")
-    assert definition is not None
+    assert isinstance(definition, dg.MultiPartitionsDefinition)
     assert len(definition.partitions_defs) == 2
 
 
@@ -102,7 +104,7 @@ def test_partition_context_from_execution_context() -> None:
         has_partition_time_window=False,
     )
     config = PartitioningConfig(mode="daily", start="2026-01-01")
-    resolved = partition_context(fake, config)  # type: ignore[arg-type]
+    resolved = partition_context(cast(dg.AssetExecutionContext, fake), config)
     assert resolved.key == "2026-02-03"
     assert resolved.start_date == "2026-02-03"
     assert resolved.metadata()["partition/key"] == "2026-02-03"
@@ -110,6 +112,6 @@ def test_partition_context_from_execution_context() -> None:
 
 def test_partition_context_without_partitions() -> None:
     fake = SimpleNamespace(has_partition_key=False)
-    resolved = partition_context(fake, PartitioningConfig())  # type: ignore[arg-type]
+    resolved = partition_context(cast(dg.AssetExecutionContext, fake), PartitioningConfig())
     assert resolved.empty
     assert resolved.render("{partition_key}") == ""

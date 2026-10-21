@@ -75,6 +75,8 @@ def spark_session(resource_env: dict[str, str]) -> Iterator[object]:
 def asset_keys(definition: dg.Definitions) -> set[str]:
     keys: set[str] = set()
     for assets in definition.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             keys.add(key.to_user_string())
     return keys

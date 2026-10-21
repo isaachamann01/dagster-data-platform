@@ -78,6 +78,8 @@ def defs(example_defs: dg.Definitions, resources: dict[str, Any]) -> dg.Definiti
 def assets_by_key(defs: dg.Definitions) -> dict[str, dg.AssetsDefinition]:
     mapping: dict[str, dg.AssetsDefinition] = {}
     for assets in defs.assets or []:
+        if not isinstance(assets, dg.AssetsDefinition):
+            continue
         for key in assets.keys:
             mapping[key.to_user_string()] = assets
     return mapping

@@ -375,6 +375,7 @@ Checks and tests:
 ruff format --check .
 ruff check .
 mypy
+ty check
 pytest -m "not docker and not slow"     # fast unit + integration tests
 pytest tests/smoke -m smoke             # end-to-end Spark/Delta materialization
 ```

@@ -70,7 +70,10 @@ class LakehouseResource(ConfigurableResource):
         options = self.storage_options()
         if not options:
             return
-        hadoop = spark.sparkContext._jsc.hadoopConfiguration()
+        jsc = spark.sparkContext._jsc
+        if jsc is None:
+            raise ResourceNotConfiguredError("Spark context is not available")
+        hadoop = jsc.hadoopConfiguration()
         for key, value in options.items():
             hadoop.set(key, value)
 
