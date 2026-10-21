@@ -1,4 +1,4 @@
-"""Data Vault model resolution, validation, and auto-generation."""
+"""Data Vault model resolution and validation."""
 
 from __future__ import annotations
 
@@ -10,13 +10,13 @@ from data_platform_common.contracts import ContractRegistry, parse_contract_docu
 from data_platform_common.datavault import (
     DataVaultModelSpec,
     HubSpec,
-    LinkRelationship,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
     build_model,
 )
 from data_platform_common.datavault.assets import build_vault_assets
+from data_platform_common.datavault.config import LinkRelationship
 from data_platform_common.errors import ContractError
 
 
@@ -81,33 +81,6 @@ def base_spec(**overrides: object) -> DataVaultModelSpec:
     }
     payload.update(overrides)
     return DataVaultModelSpec(**payload)
-
-
-def test_auto_generation_from_contracts() -> None:
-    spec = DataVaultModelSpec(vault_name="v", auto_generate=True, sources=sources())
-    model = build_model(spec, registry())
-
-    assert set(model.hubs) == {"store", "order"}
-    assert set(model.links) == {"order_store"}
-    assert set(model.satellites) == {"store", "order"}
-    assert model.layer == "vault/v"
-
-    link = model.links["order_store"]
-    assert [relationship.hub_name for relationship in link.relationships] == ["order", "store"]
-    assert link.table == "lnk_order_store"
-    assert link.hash_key == "lnk_order_store_hk"
-
-    assert model.hubs["store"].table == "hub_store"
-    assert model.hubs["store"].hash_key == "hub_store_hk"
-    assert model.hubs["store"].source.asset_key == model.hubs["store"].source.asset_key
-    assert model.hubs["store"].source.asset_key.to_user_string() == "p_store/silver/store"
-
-    order_satellite = model.satellites["order"]
-    assert order_satellite.attributes == ("quantity",)
-    assert order_satellite.parent_name == "order"
-    store_satellite = model.satellites["store"]
-    assert store_satellite.attributes == ("store_name", "region", "created_at")
-    assert store_satellite.load_ts_column is None
 
 
 def test_explicit_model_resolution_defaults() -> None:
@@ -358,26 +331,7 @@ def test_duplicate_hub_names_rejected() -> None:
         )
 
 
-def test_auto_generate_requires_parent_contracts() -> None:
-    spec = DataVaultModelSpec(
-        vault_name="v",
-        auto_generate=True,
-        sources=[VaultSourceSpec(name="order_src", contract="order")],
-    )
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
 def test_config_validation() -> None:
-    with pytest.raises(ValidationError):
-        DataVaultModelSpec(vault_name="v", sources=[], auto_generate=True)
-    with pytest.raises(ValidationError):
-        DataVaultModelSpec(
-            vault_name="v",
-            sources=sources(),
-            auto_generate=True,
-            hubs=[HubSpec(name="store", source="store_src", business_keys=["store_id"])],
-        )
     with pytest.raises(ValidationError):
         DataVaultModelSpec(vault_name="v", sources=sources())
     with pytest.raises(ValidationError):

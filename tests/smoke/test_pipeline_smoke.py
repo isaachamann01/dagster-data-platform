@@ -67,11 +67,10 @@ def test_smoke_definitions_load_graph_and_multi_document(example_defs: dg.Defini
             deps[key.to_user_string()] = {
                 parent.to_user_string() for parent in assets.asset_deps.get(key, set())
             }
-    assert len(keys) == 16  # three medallion pipelines (9) + two data vaults (7)
+    assert len(keys) == 14  # three medallion pipelines (9) + one data vault (5)
     assert "example_store/silver/example_store" in keys  # both docs of related/defs.yaml
     assert "example_order/silver/example_order" in keys
     assert "retail/hub/hub_store" in keys  # explicit Data Vault
-    assert "entity_vault/sat/sat_example_entity" in keys  # auto-generated Data Vault
     assert "example_entity/bronze/example_entity" in deps["example_entity/silver/example_entity"]
     assert "example_entity/silver/example_entity" in deps["example_entity/gold/example_entity_gold"]
     assert "example_order/bronze/example_order" in deps["example_order/silver/example_order"]

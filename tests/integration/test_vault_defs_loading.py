@@ -10,8 +10,6 @@ VAULT_KEYS = {
     "retail/link/lnk_store_order",
     "retail/sat/sat_store_profile",
     "retail/sat/sat_order_details",
-    "entity_vault/hub/hub_example_entity",
-    "entity_vault/sat/sat_example_entity",
 }
 
 
@@ -64,10 +62,6 @@ def test_vault_lineage_points_at_silver_and_parents(example_defs: dg.Definitions
     } <= link_deps
     satellite_deps = _deps(example_defs, "retail/sat/sat_store_profile")
     assert {"example_store/silver/example_store", "retail/hub/hub_store"} <= satellite_deps
-    auto_satellite_deps = _deps(example_defs, "entity_vault/sat/sat_example_entity")
-    assert {"example_entity/silver/example_entity", "entity_vault/hub/hub_example_entity"} <= (
-        auto_satellite_deps
-    )
 
 
 def test_vault_checks_are_generated(example_defs: dg.Definitions) -> None:
@@ -79,18 +73,8 @@ def test_vault_checks_are_generated(example_defs: dg.Definitions) -> None:
         ("retail/link/lnk_store_order", "hub_reference__order"),
         ("retail/sat/sat_store_profile", "parent_key_exists"),
         ("retail/sat/sat_order_details", "parent_hashdiff_unique"),
-        ("entity_vault/sat/sat_example_entity", "hashdiff_not_null"),
     ):
         assert expected in specs, expected
-
-
-def test_auto_generated_satellite_metadata(example_defs: dg.Definitions) -> None:
-    metadata = _asset_metadata(example_defs, "entity_vault/sat/sat_example_entity")
-    attributes = metadata["datavault/attributes"]
-    assert "name" in attributes
-    assert "tags" in attributes
-    assert "entity_id" not in attributes
-    assert metadata["datavault/parent"] == "hub:example_entity"
 
 
 def test_explicit_satellite_metadata(example_defs: dg.Definitions) -> None:

@@ -21,9 +21,6 @@ EXPECTED_ASSETS = {
     "retail/link/lnk_store_order",
     "retail/sat/sat_store_profile",
     "retail/sat/sat_order_details",
-    # Auto-generated Data Vault (entity_vault)
-    "entity_vault/hub/hub_example_entity",
-    "entity_vault/sat/sat_example_entity",
 }
 
 
@@ -56,8 +53,8 @@ def _check_specs(definition: dg.Definitions) -> list[tuple[str, str]]:
 
 
 def test_all_pipelines_and_multiple_documents_load(example_defs: dg.Definitions) -> None:
-    # Sixteen assets: medallion (three pipelines, two from one multi-document
-    # file) plus two Data Vault factories (one explicit, one auto-generated).
+    # Fourteen assets: medallion (three pipelines, two from one multi-document
+    # file) plus one explicit Data Vault factory.
     assert _keys(example_defs) == EXPECTED_ASSETS
 
 

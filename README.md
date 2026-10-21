@@ -35,7 +35,7 @@ dagster_pipelines/
 │       ├── imports.py                    Trusted dotted-import resolution
 │       └── transformations.py            json_to_dataframe, drop_columns_not_in_contract
 ├── services/synthetic-api/               FastAPI synthetic-data service
-├── projects/example_pipelines/           Three medallion pipelines, six contracts, two vaults
+├── projects/example_pipelines/           Three medallion pipelines, six contracts, one vault
 ├── projects/test_project/                Minimal separate project proving reusability
 ├── tests/                                Unit, integration, and smoke tests
 ├── docker/                               Dockerfiles + Dagster and Trino config
@@ -208,11 +208,8 @@ into a single silver table first.
 
 Parameters that shape the output:
 
-- **`auto_generate: true`** derives the whole model from the contracts: primary
-  keys become hubs, foreign keys become links, and the remaining columns form
-  satellites (see the `entity_vault` document in `defs/vault/defs.yaml`).
 - **`hash_algorithm`** (`md5`/`sha256`), **`hash_delimiter`**,
-  **`normalize_key_values`**, and per-entity **`hash_prefix`** control hash keys
+  **`normalize_key_values`**, and per-hub/link **`hash_prefix`** control hash keys
   and hashdiffs. Nulls hash as `^^`; values are trimmed/uppercased by default.
 - **`load_ts_column`** uses a deterministic source timestamp instead of the run
   timestamp; **`attributes`** selects (or defaults to) the tracked payload;
@@ -453,7 +450,7 @@ Spark 4.2.0, Delta 4.4.0):
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |
 | `docker build -f docker/Dockerfile.dagster ...` | image built |
-| `docker compose up -d` + `dagster asset list` in container | 16 assets listed, UI 200, API healthy |
+| `docker compose up -d` + `dagster asset list` in container | 14 assets listed, UI 200, API healthy |
 | `RUN_DOCKER_TESTS=1 pytest tests/docker -m docker` | 1 passed in 35.61s (Delta merge round-trip through MinIO S3A) |
 
 The smoke suite materializes the complete parent/child and daily-partitioned

@@ -3,7 +3,6 @@
 from data_platform_common.datavault.config import (
     DataVaultModelSpec,
     HubSpec,
-    LinkRelationship,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
@@ -17,19 +16,16 @@ from data_platform_common.datavault.hashing import (
 from data_platform_common.datavault.model import (
     DataVaultModel,
     build_model,
-    derive_specs,
 )
 
 __all__ = [
     "DataVaultModel",
     "DataVaultModelSpec",
     "HubSpec",
-    "LinkRelationship",
     "LinkSpec",
     "SatelliteSpec",
     "VaultSourceSpec",
     "build_model",
-    "derive_specs",
     "hash_expression",
     "hash_payload",
     "hash_value",

@@ -28,16 +28,6 @@ RETAIL_KEYS = [
     "retail/sat/sat_store_profile",
     "retail/sat/sat_order_details",
 ]
-ENTITY_KEYS = [
-    "example_entity/bronze/example_entity",
-    "example_entity/silver/example_entity",
-    "example_entity/gold/example_entity_gold",
-]
-ENTITY_VAULT_KEYS = [
-    "entity_vault/hub/hub_example_entity",
-    "entity_vault/sat/sat_example_entity",
-]
-ENTITY_PARTITION = "2026-01-02"
 
 
 def _materialize(
@@ -135,30 +125,6 @@ def test_link_and_satellites_are_referentially_consistent(
     )
     assert mined.where(F.col("sat_name") != F.col("source_name")).count() == 0
     assert mined.count() == satellite.count()
-
-
-def test_auto_generated_entity_vault(
-    defs: dg.Definitions, resources: dict[str, Any], spark: Any
-) -> None:
-    _materialize(defs, resources, ENTITY_KEYS, partition_key=ENTITY_PARTITION)
-    result = _materialize(defs, resources, ENTITY_VAULT_KEYS)
-    assert result.success
-
-    hub = _table(spark, resources, "vault/entity_vault", "hub_example_entity")
-    satellite = _table(spark, resources, "vault/entity_vault", "sat_example_entity")
-    silver = _table(spark, resources, "silver", "example_entity")
-
-    assert hub.count() == silver.select("entity_id").distinct().count()
-    assert hub.select("hub_example_entity_hk").distinct().count() == hub.count()
-    assert {"name", "category", "tags", "details"} <= set(satellite.columns)
-    assert "entity_id" not in satellite.columns
-    assert (
-        satellite.select("hub_example_entity_hk")
-        .distinct()
-        .join(hub.select("hub_example_entity_hk"), on="hub_example_entity_hk", how="left_anti")
-        .count()
-        == 0
-    )
 
 
 def test_vault_checks_execute_in_a_real_job(

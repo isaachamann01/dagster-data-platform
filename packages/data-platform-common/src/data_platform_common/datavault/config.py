@@ -89,7 +89,6 @@ class SatelliteSpec(BaseSpec):
     table: str | None = None
     hashdiff_column: str = "hashdiff"
     load_ts_column: str | None = None
-    hash_prefix: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -105,7 +104,6 @@ class DataVaultModelSpec(BaseSpec):
     hubs: list[HubSpec] = Field(default_factory=list)
     links: list[LinkSpec] = Field(default_factory=list)
     satellites: list[SatelliteSpec] = Field(default_factory=list)
-    auto_generate: bool = False
     hash_algorithm: Literal["md5", "sha256"] = "md5"
     hash_delimiter: str = "||"
     normalize_key_values: bool = True
@@ -144,15 +142,8 @@ class DataVaultModelSpec(BaseSpec):
         if duplicates:
             raise ValueError(f"duplicate definition names in: {', '.join(duplicates)}")
 
-        if self.auto_generate and (self.hubs or self.links or self.satellites):
-            raise ValueError(
-                "auto_generate cannot be combined with explicit hubs/links/satellites; "
-                "either declare the model or let it be derived"
-            )
-        if not self.auto_generate and not (self.hubs or self.links or self.satellites):
-            raise ValueError(
-                "the vault has no hubs, links, or satellites; declare them or set auto_generate"
-            )
+        if not (self.hubs or self.links or self.satellites):
+            raise ValueError("the vault has no hubs, links, or satellites; declare them")
         return self
 
     def resource_key(self, name: str, default: str) -> str:

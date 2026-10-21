@@ -1,14 +1,7 @@
 """Resolved Data Vault 2.0 model: hubs, links, and satellites.
 
-The factory supports two modes:
-
-- **explicit**: hubs/links/satellites are declared in ``defs.yaml``.
-- **auto_generate**: the model is derived from the silver contracts — primary
-  keys become hubs, foreign keys become links, and the remaining columns form
-  satellites attached to the child hub.
-
-Either way the result is a validated :class:`DataVaultModel` that the asset and
-check builders consume.
+Hubs, links, and satellites are declared explicitly in ``defs.yaml``; the result
+is a validated :class:`DataVaultModel` that the asset and check builders consume.
 """
 
 from __future__ import annotations
@@ -396,87 +389,6 @@ def _resolve_satellite(
 
 
 # --------------------------------------------------------------------------- #
-# Auto generation
-# --------------------------------------------------------------------------- #
-
-
-def derive_specs(
-    sources: dict[str, ResolvedSource],
-) -> tuple[list[HubSpec], list[LinkSpec], list[SatelliteSpec]]:
-    """Derive hubs, links, and satellites from the silver contracts."""
-
-    contract_to_source: dict[str, ResolvedSource] = {}
-    for source in sources.values():
-        contract_to_source.setdefault(source.contract.name, source)
-
-    hubs: list[HubSpec] = []
-    links: list[LinkSpec] = []
-    satellites: list[SatelliteSpec] = []
-    seen_links: set[str] = set()
-
-    for source in sources.values():
-        contract = source.contract
-        primary_key = list(contract.primary_key_columns)
-        if primary_key:
-            hubs.append(HubSpec(name=contract.name, source=source.name, business_keys=primary_key))
-
-        foreign_columns = {column for fk in contract.foreign_keys for column in fk.columns}
-        if primary_key:
-            for fk in contract.foreign_keys:
-                parent = contract_to_source.get(fk.references.contract)
-                if parent is None:
-                    raise ContractError(
-                        f"auto_generate: contract '{contract.name}' references "
-                        f"'{fk.references.contract}' which is not part of the vault sources"
-                    )
-                if not parent.contract.primary_key_columns:
-                    raise ContractError(
-                        f"auto_generate: parent contract '{parent.contract.name}' has no "
-                        "primary key to build a hub from"
-                    )
-                link_name = f"{contract.name}_{parent.contract.name}"
-                if link_name in seen_links:
-                    raise ContractError(
-                        f"auto_generate: duplicate derived link '{link_name}'; declare the model "
-                        "explicitly to disambiguate"
-                    )
-                seen_links.add(link_name)
-                links.append(
-                    LinkSpec(
-                        name=link_name,
-                        relationships=[
-                            LinkRelationship(
-                                hub=contract.name, columns=primary_key, source=source.name
-                            ),
-                            LinkRelationship(
-                                hub=parent.contract.name,
-                                columns=list(fk.columns),
-                                source=source.name,
-                            ),
-                        ],
-                    )
-                )
-
-        attribute_columns = [
-            column
-            for column in contract.column_names
-            if column not in primary_key
-            and column not in foreign_columns
-            and not column.startswith(METADATA_COLUMN_PREFIX)
-        ]
-        if primary_key and attribute_columns:
-            satellites.append(
-                SatelliteSpec(
-                    name=contract.name,
-                    source=source.name,
-                    parent=contract.name,
-                    attributes=attribute_columns,
-                )
-            )
-    return hubs, links, satellites
-
-
-# --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 
@@ -486,10 +398,7 @@ def build_model(spec: DataVaultModelSpec, registry: ContractRegistry) -> DataVau
 
     sources = {source.name: _resolve_source(source, registry) for source in spec.sources}
 
-    if spec.auto_generate:
-        hub_specs, link_specs, satellite_specs = derive_specs(sources)
-    else:
-        hub_specs, link_specs, satellite_specs = spec.hubs, spec.links, spec.satellites
+    hub_specs, link_specs, satellite_specs = spec.hubs, spec.links, spec.satellites
 
     model = DataVaultModel(
         vault_name=spec.vault_name,

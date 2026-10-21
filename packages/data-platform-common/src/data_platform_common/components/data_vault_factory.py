@@ -36,10 +36,6 @@ component loads from the first declared source that contains every key column::
           relationships:
             - {hub: order, columns: [order_id], source: example_order}
             - {hub: store, columns: [store_id], source: example_store}
-
-Set ``auto_generate: true`` instead of declaring hubs/links/satellites to
-derive the model from the contracts (primary keys -> hubs, foreign keys ->
-links, remaining columns -> satellites).
 """
 
 from __future__ import annotations
