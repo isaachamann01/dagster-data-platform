@@ -6,7 +6,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from data_platform_common.contracts.loader import load_contracts_dir, resolve_contract_source
-from data_platform_common.contracts.models import DataContract, ForeignKey, ForeignKeyRef
+from data_platform_common.contracts.models import DataContract
 from data_platform_common.errors import ContractNotFoundError
 
 
@@ -64,27 +64,6 @@ class ContractRegistry:
         self.add(contract)
         self._sources[key] = contract
         return contract
-
-    def resolve_reference(self, reference: ForeignKeyRef) -> tuple[DataContract, list[str]]:
-        """Resolve an FK reference to its contract and referenced columns."""
-
-        parent = self.get(reference.contract)
-        columns = reference.columns or parent.primary_key_columns
-        if not columns:
-            raise ContractNotFoundError(
-                f"Foreign key reference to '{reference.contract}' has no columns and "
-                "the parent contract has no primary key"
-            )
-        for column in columns:
-            if parent.get_column(column) is None:
-                raise ContractNotFoundError(
-                    f"Foreign key reference column '{column}' is not defined in "
-                    f"contract '{parent.name}'"
-                )
-        return parent, list(columns)
-
-    def resolve_foreign_key(self, foreign_key: ForeignKey) -> tuple[DataContract, list[str]]:
-        return self.resolve_reference(foreign_key.references)
 
     def all(self) -> list[DataContract]:
         return sorted(self._contracts.values(), key=lambda contract: contract.name)

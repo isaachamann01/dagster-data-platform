@@ -422,7 +422,7 @@ No changes to `data_platform_common` are required, and asset keys are namespaced
 ## Reusability
 
 `projects/test_project` is an independent Dagster project that installs `data-platform-common`
-and declares a full pipeline:
+and declares both component types with no project-local framework code:
 
 ```yaml
 type: data_platform_common.components.medallion_factory.MedallionFactory
@@ -433,7 +433,64 @@ attributes:
     mode: full_snapshot
 ```
 
+```yaml
+type: data_platform_common.components.data_vault_factory.DataVaultFactory
+attributes:
+  vault_name: tiny_retail
+  sources:
+    - name: tiny_store
+      contract: test_project.contracts.get_tiny_store_silver_contract_path
+      pipeline_name: tiny_store
+    ...
+  hubs:
+    - {name: store, source: tiny_store, business_keys: [store_id]}
+  links:
+    - name: store_order
+      relationships:
+        - {hub: order, columns: [order_id], source: tiny_order}
+        - {hub: store, columns: [store_id], source: tiny_store}
+  satellites:
+    - {name: store_profile, source: tiny_store, parent: store, attributes: [store_name, region]}
+```
+
 Its tests load the definitions without Spark and assert the generated asset keys and checks.
+
+### Porting the Data Vault component to another project
+
+1. **Install the library** (wheel, editable checkout, or git reference):
+   ```bash
+   pip install /path/to/dagster_pipelines/packages/data-platform-common
+   ```
+   It has no dependency on `example_pipelines`; only Dagster, pydantic, PySpark, and Delta.
+2. **Provide resources.** The vault needs `spark`, `lakehouse`, `metadata`, and `delta_io_manager`.
+   The simplest wiring is the shared environment builder in your `definitions.py`:
+   ```python
+   import dagster as dg
+   from data_platform_common.resources import build_resources_from_env
+
+
+   @dg.definitions
+   def defs():
+       return dg.Definitions.merge(
+           dg.load_from_defs_folder(path_within_project=Path(__file__)),
+           dg.Definitions(resources=build_resources_from_env()),
+       )
+   ```
+   If your project already names resources differently, set `resource_keys` on the factory.
+3. **Describe the silver contracts** in your project (YAML) and expose path helpers, e.g.
+   `my_project.contracts.get_store_silver_contract_path`.
+4. **Add a `defs/<anything>/defs.yaml`** using the full component path (see the example above).
+   Do not put a `defs.yaml` at the `defs/` root if you also use subfolders — a root file
+   short-circuits component discovery. Each component belongs in its own subdirectory.
+5. **Make contract references resolvable.** Either use absolute/relative file paths, or set
+   `tool.dg.project.root_module` (or `trusted_prefixes`) in your `dg.toml`/`pyproject.toml`
+   so dotted helpers such as `my_project.contracts.get_*` are trusted. The component derives
+   the trusted prefixes from the **consuming** project, not from this repo.
+6. **Point `pipeline_name` at the pipeline that materializes each silver table.** The vault
+   reads the Delta table at `<layer>/<table>` via the lakehouse resource and derives its
+   source asset key as `[pipeline_name, layer, table]`.
+7. **Reload definitions.** Hubs, links, satellites, asset checks, and lineage are generated
+   automatically; no Python changes are required.
 
 ## Verification status
 

@@ -39,9 +39,6 @@ class ForeignKeyParent:
     layer: str = DEFAULT_LAYER
     asset_key: dg.AssetKey | None = None
 
-    def fk_key(self, foreign_key: ForeignKey) -> str:
-        return "+".join(foreign_key.columns)
-
 
 def build_asset_checks(
     contract: DataContract,

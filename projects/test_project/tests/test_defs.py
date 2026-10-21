@@ -1,4 +1,4 @@
-"""Prove the MedallionFactory component is reusable from a separate project."""
+"""Prove both factories are reusable from a separate project."""
 
 from __future__ import annotations
 
@@ -25,7 +25,27 @@ def test_definitions_load_with_expected_assets() -> None:
         "tiny_entity/bronze/tiny_entity",
         "tiny_entity/silver/tiny_entity",
         "tiny_entity/gold/tiny_entity_gold",
+        "tiny_retail/hub/hub_store",
+        "tiny_retail/hub/hub_order",
+        "tiny_retail/link/lnk_store_order",
+        "tiny_retail/sat/sat_store_profile",
+        "tiny_retail/sat/sat_order_details",
     }
+
+
+def test_vault_assets_and_checks_are_generated() -> None:
+    defs = dg.load_from_defs_folder(path_within_project=Path(__file__))
+
+    check_names = {
+        spec.name
+        for checks in defs.asset_checks or []
+        for spec in checks.check_specs
+        if isinstance(spec, dg.AssetCheckSpec)
+    }
+    assert "hash_key_unique" in check_names
+    assert "hub_reference__store" in check_names
+    assert "parent_key_exists" in check_names
+    assert "parent_hashdiff_unique" in check_names
 
 
 def test_asset_checks_are_contract_derived() -> None:

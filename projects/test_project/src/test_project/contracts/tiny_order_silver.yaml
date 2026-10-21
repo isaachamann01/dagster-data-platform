@@ -1,0 +1,34 @@
+name: tiny_order
+version: "1.0"
+table: tiny_order
+layer: silver
+description: Child contract proving the DataVaultFactory is project-portable.
+columns:
+  - name: order_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^TORD-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "TORD-"
+  - name: store_id
+    type: string
+    nullable: false
+    references:
+      contract: tiny_store
+      columns: [store_id]
+  - name: quantity
+    type: integer
+    nullable: false
+    constraints:
+      min_value: 1
+      max_value: 10
+  - name: created_at
+    type: timestamp
+    nullable: true
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
@@ -55,22 +53,3 @@ def drop_columns_not_in_contract(
         if column in contract.column_map or column.startswith(METADATA_COLUMN_PREFIX)
     ]
     return df.select(*keep)
-
-
-def columns_in_contract(df: DataFrame, *, contract: DataContract | None = None) -> DataFrame:
-    """Alias with a predicate-style name for readability in defs.yaml files."""
-
-    return drop_columns_not_in_contract(df, contract=contract)
-
-
-def rename_columns(mapping: dict[str, str]) -> Any:
-    """Build a transformation that renames columns according to ``mapping``."""
-
-    def _rename(df: DataFrame) -> DataFrame:
-        result = df
-        for source, target in mapping.items():
-            if source in result.columns:
-                result = result.withColumnRenamed(source, target)
-        return result
-
-    return _rename

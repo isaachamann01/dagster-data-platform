@@ -236,107 +236,97 @@ def _key_uniqueness_check(name: str, keys: Sequence[str], description: str) -> C
     return evaluate
 
 
-def _allowed_values_check(path: str, column: ColumnContract) -> CheckEvaluator:
-    allowed = list(column.allowed_values or [])
+def _column_violation_check(
+    name: str,
+    path: str,
+    condition: Callable[[], F.Column],
+    *,
+    violation: str,
+    satisfied: str,
+    metadata: dict[str, Any] | None = None,
+) -> CheckEvaluator:
+    """Shared plumbing for single-column constraint checks.
+
+    Skips (passes) when the column is absent, otherwise counts violating rows
+    and fails with up to five sampled values. The condition is built lazily
+    because ``F.col`` requires an active Spark session.
+    """
 
     def evaluate(df: DataFrame, context: ValidationContext) -> CheckOutcome:
-        name = f"allowed_values__{path}"
         if path not in df.columns:
             return _pass(name, "column not present; skipped")
-        condition = F.col(path).isNotNull() & ~F.col(path).isin(*allowed)
-        invalid_count = _count(df, condition)
+        invalid_count = _count(df, condition())
         if invalid_count:
-            samples = _sample_rows(df, condition, [path])
+            samples = _sample_rows(df, condition(), [path])
             return _fail(
                 name,
-                f"{invalid_count} value(s) outside allowed values {allowed}: "
+                f"{invalid_count} value(s) {violation}: "
                 + ", ".join(_display(row[0]) for row in samples),
                 invalid_count=invalid_count,
-                allowed_values=allowed,
+                **(metadata or {}),
             )
-        return _pass(name, f"all values within {allowed}")
+        return _pass(name, satisfied)
 
     return evaluate
+
+
+def _allowed_values_check(path: str, column: ColumnContract) -> CheckEvaluator:
+    allowed = list(column.allowed_values or [])
+    return _column_violation_check(
+        f"allowed_values__{path}",
+        path,
+        lambda: F.col(path).isNotNull() & ~F.col(path).isin(*allowed),
+        violation=f"outside allowed values {allowed}",
+        satisfied=f"all values within {allowed}",
+        metadata={"allowed_values": allowed},
+    )
 
 
 def _range_check(path: str, column: ColumnContract) -> CheckEvaluator:
     minimum = column.constraints.min_value
     maximum = column.constraints.max_value
-
-    def evaluate(df: DataFrame, context: ValidationContext) -> CheckOutcome:
-        name = f"range__{path}"
-        if path not in df.columns:
-            return _pass(name, "column not present; skipped")
-        conditions = []
-        if minimum is not None:
-            conditions.append(F.col(path) < _literal(column, minimum))
-        if maximum is not None:
-            conditions.append(F.col(path) > _literal(column, maximum))
-        condition = F.col(path).isNotNull() & _any_of(conditions)
-        invalid_count = _count(df, condition)
-        if invalid_count:
-            samples = _sample_rows(df, condition, [path])
-            bounds = f"min={minimum}, max={maximum}"
-            return _fail(
-                name,
-                f"{invalid_count} value(s) outside [{bounds}]: "
-                + ", ".join(_display(row[0]) for row in samples),
-                invalid_count=invalid_count,
-            )
-        return _pass(name, f"values within [{minimum}, {maximum}]")
-
-    return evaluate
+    conditions: list[Callable[[], F.Column]] = []
+    if minimum is not None:
+        conditions.append(lambda: F.col(path) < _literal(column, minimum))
+    if maximum is not None:
+        conditions.append(lambda: F.col(path) > _literal(column, maximum))
+    return _column_violation_check(
+        f"range__{path}",
+        path,
+        lambda: F.col(path).isNotNull() & _any_of([condition() for condition in conditions]),
+        violation=f"outside [min={minimum}, max={maximum}]",
+        satisfied=f"values within [{minimum}, {maximum}]",
+    )
 
 
 def _length_check(path: str, column: ColumnContract) -> CheckEvaluator:
     minimum = column.constraints.min_length
     maximum = column.constraints.max_length
-
-    def evaluate(df: DataFrame, context: ValidationContext) -> CheckOutcome:
-        name = f"length__{path}"
-        if path not in df.columns:
-            return _pass(name, "column not present; skipped")
-        conditions = []
-        if minimum is not None:
-            conditions.append(F.length(F.col(path)) < minimum)
-        if maximum is not None:
-            conditions.append(F.length(F.col(path)) > maximum)
-        condition = F.col(path).isNotNull() & _any_of(conditions)
-        invalid_count = _count(df, condition)
-        if invalid_count:
-            samples = _sample_rows(df, condition, [path])
-            return _fail(
-                name,
-                f"{invalid_count} value(s) outside length bounds "
-                f"[{minimum}, {maximum}]: " + ", ".join(_display(row[0]) for row in samples),
-                invalid_count=invalid_count,
-            )
-        return _pass(name, f"string lengths within [{minimum}, {maximum}]")
-
-    return evaluate
+    conditions: list[Callable[[], F.Column]] = []
+    if minimum is not None:
+        conditions.append(lambda: F.length(F.col(path)) < minimum)
+    if maximum is not None:
+        conditions.append(lambda: F.length(F.col(path)) > maximum)
+    return _column_violation_check(
+        f"length__{path}",
+        path,
+        lambda: F.col(path).isNotNull() & _any_of([condition() for condition in conditions]),
+        violation=f"outside length bounds [{minimum}, {maximum}]",
+        satisfied=f"string lengths within [{minimum}, {maximum}]",
+    )
 
 
 def _regex_check(path: str, column: ColumnContract) -> CheckEvaluator:
     pattern = column.constraints.regex
-
-    def evaluate(df: DataFrame, context: ValidationContext) -> CheckOutcome:
-        name = f"regex__{path}"
-        if path not in df.columns or pattern is None:
-            return _pass(name, "column not present; skipped")
-        condition = F.col(path).isNotNull() & ~F.col(path).rlike(pattern)
-        invalid_count = _count(df, condition)
-        if invalid_count:
-            samples = _sample_rows(df, condition, [path])
-            return _fail(
-                name,
-                f"{invalid_count} value(s) not matching /{pattern}/: "
-                + ", ".join(_display(row[0]) for row in samples),
-                invalid_count=invalid_count,
-                regex=pattern,
-            )
-        return _pass(name, f"all values match /{pattern}/")
-
-    return evaluate
+    assert pattern is not None  # only constructed when a regex is declared
+    return _column_violation_check(
+        f"regex__{path}",
+        path,
+        lambda: F.col(path).isNotNull() & ~F.col(path).rlike(pattern),
+        violation=f"not matching /{pattern}/",
+        satisfied=f"all values match /{pattern}/",
+        metadata={"regex": pattern},
+    )
 
 
 def _foreign_key_check(foreign_key: ForeignKey) -> CheckEvaluator:

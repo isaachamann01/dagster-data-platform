@@ -1,0 +1,32 @@
+name: tiny_store
+version: "1.0"
+table: tiny_store
+layer: silver
+description: Parent contract proving the DataVaultFactory is project-portable.
+columns:
+  - name: store_id
+    type: string
+    primary_key: true
+    constraints:
+      regex: "^TSTORE-[0-9]{6}$"
+    synthetic:
+      distribution: sequential
+      prefix: "TSTORE-"
+  - name: store_name
+    type: string
+    nullable: false
+    constraints:
+      min_length: 3
+      max_length: 32
+  - name: region
+    type: string
+    nullable: false
+    allowed_values: [emea, amer, apac]
+  - name: created_at
+    type: timestamp
+    nullable: true
+expectations:
+  - name: population_present
+    type: row_count_min
+    params:
+      min: 1

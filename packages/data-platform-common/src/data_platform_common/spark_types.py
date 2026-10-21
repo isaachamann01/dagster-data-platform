@@ -66,17 +66,6 @@ def spark_type_for(column: ColumnContract) -> DataType:
     raise ValueError(f"Unsupported logical type: {column.type}")
 
 
-def spark_schema_for(contract: DataContract) -> StructType:
-    """The full Spark schema for a contract."""
-
-    return StructType(
-        [
-            StructField(column.name, spark_type_for(column), column.nullable)
-            for column in contract.columns
-        ]
-    )
-
-
 def _cast_expression(column: ColumnContract) -> F.Column:
     name = column.name
     source = F.col(name)

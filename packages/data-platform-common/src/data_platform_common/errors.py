@@ -27,10 +27,6 @@ class MergeKeysRequiredError(DataPlatformError):
     """Raised when merge mode is requested without valid merge keys."""
 
 
-class SchemaEvolutionError(DataPlatformError):
-    """Raised when an incoming schema is incompatible and evolution is disabled."""
-
-
 class ContractValidationError(DataPlatformError):
     """Raised when data does not satisfy its contract."""
 

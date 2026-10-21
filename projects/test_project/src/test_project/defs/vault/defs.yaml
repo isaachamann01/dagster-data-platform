@@ -1,0 +1,41 @@
+# Proves the DataVaultFactory component is reusable from a separate project,
+# with no dependency on example_pipelines. This is the minimal recipe for
+# wiring a vault into any Dagster project that installs data-platform-common.
+type: data_platform_common.components.data_vault_factory.DataVaultFactory
+attributes:
+  vault_name: tiny_retail
+  hash_algorithm: md5
+  sources:
+    - name: tiny_store
+      contract: test_project.contracts.get_tiny_store_silver_contract_path
+      pipeline_name: tiny_store
+    - name: tiny_order
+      contract: test_project.contracts.get_tiny_order_silver_contract_path
+      pipeline_name: tiny_order
+  hubs:
+    - name: store
+      source: tiny_store
+      business_keys: [store_id]
+    - name: order
+      source: tiny_order
+      business_keys: [order_id]
+  links:
+    - name: store_order
+      relationships:
+        - hub: order
+          columns: [order_id]
+          source: tiny_order
+        - hub: store
+          columns: [store_id]
+          source: tiny_store
+  satellites:
+    - name: store_profile
+      source: tiny_store
+      parent: store
+      attributes: [store_name, region]
+      load_ts_column: created_at
+    - name: order_details
+      source: tiny_order
+      parent: order
+      attributes: [quantity]
+      load_ts_column: created_at

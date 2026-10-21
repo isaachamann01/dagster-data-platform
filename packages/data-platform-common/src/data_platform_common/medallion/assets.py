@@ -46,7 +46,7 @@ from data_platform_common.partitions import (
     build_partitions_definition,
     partition_context,
 )
-from data_platform_common.spark_types import METADATA_COLUMN_PREFIX, cast_dataframe
+from data_platform_common.spark_types import cast_dataframe
 from data_platform_common.validation.frame import ValidationContext, run_frame_validation
 
 BRONZE_SCHEMA = T.StructType(
@@ -114,11 +114,7 @@ class MedallionPipeline:
     # -- write behaviour -----------------------------------------------------
 
     def effective_merge_keys(self, layer: str) -> list[str]:
-        if layer == "gold" and self.gold_contract is not None and self.merge_keys:
-            return list(self.merge_keys)
-        if layer == "silver":
-            return list(self.merge_keys)
-        return []
+        return list(self.merge_keys) if layer != "bronze" else []
 
     def resolve_write_mode(self, layer: str) -> WriteMode:
         explicit = getattr(self.write_modes, layer, None)
@@ -156,24 +152,19 @@ class MedallionPipeline:
     def validate_configuration(self) -> None:
         """Fail fast on invalid contract/config combinations at load time."""
 
-        contract = self.gold_contract or self.silver_contract
+        target = self.gold_contract or self.silver_contract
         for key in self.merge_keys:
-            if contract.get_column(key) is None:
+            if target.get_column(key) is None:
                 raise ContractError(
                     f"pipeline '{self.pipeline_name}': merge key '{key}' is not a column of "
-                    f"contract '{contract.name}'"
+                    f"contract '{target.name}'"
                 )
-        target = self.gold_contract or self.silver_contract
         for column in self.partitioning.partition_columns:
             if target.get_column(column) is None:
                 raise ContractError(
                     f"pipeline '{self.pipeline_name}': partition column '{column}' is not a "
                     f"column of contract '{target.name}'"
                 )
-        if self.partitioning.is_partitioned and not self.partitioning.partition_columns:
-            # Logical partitioning (metadata/paths) is allowed, but surface the
-            # decision so it is never accidental.
-            pass
 
     def parent_asset_keys(self) -> list[dg.AssetKey]:
         return [
@@ -317,23 +308,33 @@ def _apply_transformations(
     return result
 
 
-def _build_silver(pipeline: MedallionPipeline) -> dg.AssetsDefinition:
+def _build_validated_layer(
+    pipeline: MedallionPipeline,
+    *,
+    layer: str,
+    contract: DataContract,
+    transformations: list[Transformation],
+    input_key: dg.AssetKey,
+    asset_key: dg.AssetKey,
+    description: str,
+) -> dg.AssetsDefinition:
+    """Build the silver or gold asset: transform, cast, validate, write."""
+
     keys = pipeline.resource_keys
-    contract = pipeline.silver_contract
 
     @dg.asset(
-        key=pipeline.silver_key,
+        key=asset_key,
         group_name=pipeline.pipeline_name,
         kinds={"spark", "delta"},
         partitions_def=pipeline.partitions_def,
-        ins={"bronze": dg.AssetIn(key=pipeline.bronze_key)},
+        ins={"upstream": dg.AssetIn(key=input_key)},
         deps=pipeline.parent_asset_keys() or None,
         required_resource_keys={keys.spark, keys.lakehouse, keys.metadata},
         io_manager_key=keys.io_manager,
-        metadata=pipeline.table_metadata("silver", pipeline.silver_table),
-        description=f"Silver Delta table for pipeline '{pipeline.pipeline_name}'",
+        metadata=pipeline.table_metadata(layer, contract.table_name),
+        description=description,
     )
-    def silver(context: dg.AssetExecutionContext, bronze: Any) -> Any:
+    def validated(context: dg.AssetExecutionContext, upstream: Any) -> Any:
         partition = partition_context(context, pipeline.partitioning)
         spark_resource = getattr(context.resources, keys.spark)
         lakehouse = getattr(context.resources, keys.lakehouse)
@@ -341,10 +342,10 @@ def _build_silver(pipeline: MedallionPipeline) -> dg.AssetsDefinition:
         lakehouse.configure_spark(spark)
 
         frame = _apply_transformations(
-            bronze,
-            pipeline.silver_transformations,
+            upstream,
+            transformations,
             contract=contract,
-            layer="silver",
+            layer=layer,
             partition=partition,
             spark=spark,
             pipeline_name=pipeline.pipeline_name,
@@ -370,64 +371,32 @@ def _build_silver(pipeline: MedallionPipeline) -> dg.AssetsDefinition:
         )
         return frame
 
-    return silver
+    return validated
+
+
+def _build_silver(pipeline: MedallionPipeline) -> dg.AssetsDefinition:
+    return _build_validated_layer(
+        pipeline,
+        layer="silver",
+        contract=pipeline.silver_contract,
+        transformations=pipeline.silver_transformations,
+        input_key=pipeline.bronze_key,
+        asset_key=pipeline.silver_key,
+        description=f"Silver Delta table for pipeline '{pipeline.pipeline_name}'",
+    )
 
 
 def _build_gold(pipeline: MedallionPipeline) -> dg.AssetsDefinition:
-    assert pipeline.gold_contract is not None
-    keys = pipeline.resource_keys
-    contract = pipeline.gold_contract
-
-    @dg.asset(
-        key=pipeline.gold_key,
-        group_name=pipeline.pipeline_name,
-        kinds={"spark", "delta"},
-        partitions_def=pipeline.partitions_def,
-        ins={"silver": dg.AssetIn(key=pipeline.silver_key)},
-        deps=pipeline.parent_asset_keys() or None,
-        required_resource_keys={keys.spark, keys.lakehouse, keys.metadata},
-        io_manager_key=keys.io_manager,
-        metadata=pipeline.table_metadata("gold", contract.table_name),
+    assert pipeline.gold_contract is not None and pipeline.gold_key is not None
+    return _build_validated_layer(
+        pipeline,
+        layer="gold",
+        contract=pipeline.gold_contract,
+        transformations=pipeline.gold_transformations,
+        input_key=pipeline.silver_key,
+        asset_key=pipeline.gold_key,
         description=f"Gold curated Delta table for pipeline '{pipeline.pipeline_name}'",
     )
-    def gold(context: dg.AssetExecutionContext, silver: Any) -> Any:
-        partition = partition_context(context, pipeline.partitioning)
-        spark_resource = getattr(context.resources, keys.spark)
-        lakehouse = getattr(context.resources, keys.lakehouse)
-        spark = spark_resource.get_session()
-        lakehouse.configure_spark(spark)
-
-        frame = _apply_transformations(
-            silver,
-            pipeline.gold_transformations,
-            contract=contract,
-            layer="gold",
-            partition=partition,
-            spark=spark,
-            pipeline_name=pipeline.pipeline_name,
-        )
-        frame = cast_dataframe(frame, contract)
-        outcomes = run_frame_validation(
-            frame,
-            contract,
-            context=ValidationContext(
-                contract=contract,
-                foreign_key_resolver=_resolve_foreign_keys(pipeline, spark, lakehouse),
-                extra_columns=frozenset(pipeline.extra_columns),
-            ),
-        )
-        _validation_failure(outcomes, contract)
-        context.add_output_metadata(
-            {
-                "contract": contract.name,
-                "contract/checks": len(outcomes),
-                "contract/failed": len([outcome for outcome in outcomes if outcome.failed]),
-                **partition.metadata(),
-            }
-        )
-        return frame
-
-    return gold
 
 
 def build_pipeline_assets(pipeline: MedallionPipeline) -> list[dg.AssetsDefinition]:
@@ -442,9 +411,6 @@ def build_pipeline_assets(pipeline: MedallionPipeline) -> list[dg.AssetsDefiniti
 
 __all__ = [
     "BRONZE_SCHEMA",
-    "MEDALLION_METADATA_PREFIX",
     "MedallionPipeline",
     "build_pipeline_assets",
 ]
-
-MEDALLION_METADATA_PREFIX = METADATA_COLUMN_PREFIX

@@ -6,6 +6,7 @@ is a validated :class:`DataVaultModel` that the asset and check builders consume
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import dagster as dg
@@ -15,7 +16,6 @@ from data_platform_common.contracts.registry import ContractRegistry
 from data_platform_common.datavault.config import (
     DataVaultModelSpec,
     HubSpec,
-    LinkRelationship,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
@@ -107,18 +107,6 @@ class ResolvedSatellite:
     asset_key: dg.AssetKey
     parent_asset_key: dg.AssetKey
 
-    def parent_hash_value(self, row: dict[str, object]) -> str:
-        from data_platform_common.datavault.hashing import hash_values_by_column
-
-        return hash_values_by_column(
-            row,
-            self.parent_columns,
-            algorithm=self.parent_hash.algorithm,
-            delimiter=self.parent_hash.delimiter,
-            prefix=self.parent_hash.prefix,
-            normalize=self.parent_hash.normalize,
-        )
-
 
 @dataclass
 class DataVaultModel:
@@ -163,27 +151,17 @@ def _source_columns(source: ResolvedSource) -> set[str]:
     return set(source.contract.column_names)
 
 
-def _hub_hash_config(spec: HubSpec, spec_model: DataVaultModelSpec) -> HashConfig:
-    return HashConfig(
-        columns=tuple(spec.business_keys),
-        algorithm=spec_model.hash_algorithm,
-        delimiter=spec_model.hash_delimiter,
-        prefix=spec.hash_prefix,
-        normalize=spec_model.normalize_key_values,
-    )
-
-
-def _link_hash_config(
-    spec: LinkSpec,
-    relationships: tuple[ResolvedLinkRelationship, ...],
-    spec_model: DataVaultModelSpec,
+def _hash_config(
+    columns: Iterable[str], *, prefix: str | None, model: DataVaultModelSpec
 ) -> HashConfig:
+    """Vault-wide hashing rules applied to one column list."""
+
     return HashConfig(
-        columns=tuple(column for relationship in relationships for column in relationship.columns),
-        algorithm=spec_model.hash_algorithm,
-        delimiter=spec_model.hash_delimiter,
-        prefix=spec.hash_prefix,
-        normalize=spec_model.normalize_key_values,
+        columns=tuple(columns),
+        algorithm=model.hash_algorithm,
+        delimiter=model.hash_delimiter,
+        prefix=prefix,
+        normalize=model.normalize_key_values,
     )
 
 
@@ -215,25 +193,8 @@ def _resolve_hub(
         hash_key=spec.hash_key or f"{table}_hk",
         source=source,
         business_keys=tuple(spec.business_keys),
-        hash=_hub_hash_config(spec, model),
+        hash=_hash_config(spec.business_keys, prefix=spec.hash_prefix, model=model),
         asset_key=dg.AssetKey([model.vault_name, HUB_KIND, table]),
-    )
-
-
-def _relationship_hash_config(relationship: LinkRelationship, hub: ResolvedHub) -> HashConfig:
-    """Hash the relationship's own columns with the hub's hashing rules.
-
-    The columns may be named differently from the hub business keys (for example
-    ``store_key`` in an association table), but they carry the same values, so
-    the resulting hash matches the hub's hash key.
-    """
-
-    return HashConfig(
-        columns=tuple(relationship.columns),
-        algorithm=hub.hash.algorithm,
-        delimiter=hub.hash.delimiter,
-        prefix=hub.hash.prefix,
-        normalize=hub.hash.normalize,
     )
 
 
@@ -282,7 +243,10 @@ def _resolve_link(
                 hub_hash_key=hub.hash_key,
                 source=relationship_source,
                 columns=tuple(relationship.columns),
-                hub_hash=_relationship_hash_config(relationship, hub),
+                # Hash the relationship's own columns with the hub's rules: the
+                # columns may be named differently from the hub business keys
+                # (``store_key`` vs ``store_id``) but carry the same values.
+                hub_hash=_hash_config(relationship.columns, prefix=hub.hash.prefix, model=model),
                 parent_asset_key=hub.asset_key,
             )
         )
@@ -302,7 +266,6 @@ def _resolve_link(
         )
     source = candidates[0]
 
-    relationships_tuple = tuple(resolved_relationships)
     table = spec.table or f"lnk_{spec.name}"
     return ResolvedLink(
         name=spec.name,
@@ -310,8 +273,8 @@ def _resolve_link(
         hash_key=spec.hash_key or f"{table}_hk",
         source=source,
         sources=tuple(used_sources.values()),
-        relationships=relationships_tuple,
-        hash=_link_hash_config(spec, relationships_tuple, model),
+        relationships=tuple(resolved_relationships),
+        hash=_hash_config(key_columns, prefix=spec.hash_prefix, model=model),
         asset_key=dg.AssetKey([model.vault_name, LINK_KIND, table]),
     )
 
@@ -327,13 +290,9 @@ def _resolve_satellite(
     if isinstance(parent, ResolvedHub):
         parent_kind = HUB_KIND
         parent_columns = parent.business_keys
-        parent_hash = parent.hash
-        parent_asset_key = parent.asset_key
     else:
         parent_kind = LINK_KIND
         parent_columns = parent.hash.columns
-        parent_hash = parent.hash
-        parent_asset_key = parent.asset_key
 
     for column in parent_columns:
         if column not in available:
@@ -379,12 +338,12 @@ def _resolve_satellite(
         parent_kind=parent_kind,
         parent_hash_key=parent.hash_key,
         parent_columns=tuple(parent_columns),
-        parent_hash=parent_hash,
+        parent_hash=parent.hash,
         attributes=tuple(attributes),
         hashdiff_column=spec.hashdiff_column,
         load_ts_column=spec.load_ts_column,
         asset_key=dg.AssetKey([model.vault_name, SAT_KIND, table]),
-        parent_asset_key=parent_asset_key,
+        parent_asset_key=parent.asset_key,
     )
 
 

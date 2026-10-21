@@ -128,97 +128,98 @@ def _references(
     return evaluate
 
 
+def _table_checks(
+    model: DataVaultModel,
+    keys: dict[str, str],
+    *,
+    asset_key: dg.AssetKey,
+    table: str,
+    specs: list[tuple[str, str, Evaluator]],
+    dependencies: list[dg.AssetKey] | None = None,
+) -> list[dg.AssetChecksDefinition]:
+    """Build one check per ``(name, description, evaluator)`` spec for one table."""
+
+    return [
+        _make_check(
+            name=name,
+            description=description,
+            asset_key=asset_key,
+            keys=keys,
+            layer=model.layer,
+            table=table,
+            evaluator=evaluator,
+            dependencies=dependencies,
+        )
+        for name, description, evaluator in specs
+    ]
+
+
 def _hub_checks(
     model: DataVaultModel, hub: ResolvedHub, keys: dict[str, str]
 ) -> list[dg.AssetChecksDefinition]:
-    return [
-        _make_check(
-            name="not_empty",
-            description=f"Hub {hub.table} is not empty",
-            asset_key=hub.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=hub.table,
-            evaluator=_not_empty(),
-        ),
-        _make_check(
-            name="hash_key_unique",
-            description=f"Hash key {hub.hash_key} is unique",
-            asset_key=hub.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=hub.table,
-            evaluator=_unique("hash key", [hub.hash_key]),
-        ),
-        _make_check(
-            name="hash_key_not_null",
-            description=f"Hash key {hub.hash_key} is never null",
-            asset_key=hub.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=hub.table,
-            evaluator=_not_null([hub.hash_key]),
-        ),
-        _make_check(
-            name="business_keys_not_null",
-            description="Business keys are never null",
-            asset_key=hub.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=hub.table,
-            evaluator=_not_null(list(hub.business_keys)),
-        ),
-    ]
+    return _table_checks(
+        model,
+        keys,
+        asset_key=hub.asset_key,
+        table=hub.table,
+        specs=[
+            ("not_empty", f"Hub {hub.table} is not empty", _not_empty()),
+            (
+                "hash_key_unique",
+                f"Hash key {hub.hash_key} is unique",
+                _unique("hash key", [hub.hash_key]),
+            ),
+            (
+                "hash_key_not_null",
+                f"Hash key {hub.hash_key} is never null",
+                _not_null([hub.hash_key]),
+            ),
+            (
+                "business_keys_not_null",
+                "Business keys are never null",
+                _not_null(list(hub.business_keys)),
+            ),
+        ],
+    )
 
 
 def _link_checks(
     model: DataVaultModel, link: ResolvedLink, keys: dict[str, str]
 ) -> list[dg.AssetChecksDefinition]:
-    checks = [
-        _make_check(
-            name="not_empty",
-            description=f"Link {link.table} is not empty",
-            asset_key=link.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=link.table,
-            evaluator=_not_empty(),
+    specs = [
+        ("not_empty", f"Link {link.table} is not empty", _not_empty()),
+        (
+            "hash_key_unique",
+            f"Link hash key {link.hash_key} is unique",
+            _unique("link hash key", [link.hash_key]),
         ),
-        _make_check(
-            name="hash_key_unique",
-            description=f"Link hash key {link.hash_key} is unique",
-            asset_key=link.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=link.table,
-            evaluator=_unique("link hash key", [link.hash_key]),
-        ),
-        _make_check(
-            name="hub_keys_not_null",
-            description="Participating hub keys are never null",
-            asset_key=link.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=link.table,
-            evaluator=_not_null([relationship.hub_hash_key for relationship in link.relationships]),
+        (
+            "hub_keys_not_null",
+            "Participating hub keys are never null",
+            _not_null([relationship.hub_hash_key for relationship in link.relationships]),
         ),
     ]
+    checks = _table_checks(model, keys, asset_key=link.asset_key, table=link.table, specs=specs)
     for relationship in link.relationships:
         hub = model.hubs[relationship.hub_name]
-        checks.append(
-            _make_check(
-                name=f"hub_reference__{relationship.hub_name}",
-                description=f"Every row references hub {hub.table}",
+        checks.extend(
+            _table_checks(
+                model,
+                keys,
                 asset_key=link.asset_key,
-                keys=keys,
-                layer=model.layer,
                 table=link.table,
-                evaluator=_references(
-                    hub.table,
-                    hub.hash_key,
-                    child_columns=[relationship.hub_hash_key],
-                    layer=model.layer,
-                ),
+                specs=[
+                    (
+                        f"hub_reference__{relationship.hub_name}",
+                        f"Every row references hub {hub.table}",
+                        _references(
+                            hub.table,
+                            hub.hash_key,
+                            child_columns=[relationship.hub_hash_key],
+                            layer=model.layer,
+                        ),
+                    )
+                ],
                 dependencies=[hub.asset_key],
             )
         )
@@ -229,53 +230,47 @@ def _satellite_checks(
     model: DataVaultModel, satellite: ResolvedSatellite, keys: dict[str, str]
 ) -> list[dg.AssetChecksDefinition]:
     parent = model.parent(satellite.parent_name)
-    parent_table = parent.table
-    return [
-        _make_check(
-            name="not_empty",
-            description=f"Satellite {satellite.table} is not empty",
-            asset_key=satellite.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=satellite.table,
-            evaluator=_not_empty(),
-        ),
-        _make_check(
-            name="hashdiff_not_null",
-            description=f"Hashdiff {satellite.hashdiff_column} is never null",
-            asset_key=satellite.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=satellite.table,
-            evaluator=_not_null([satellite.hashdiff_column]),
-        ),
-        _make_check(
-            name="parent_key_exists",
-            description=f"Parent key {satellite.parent_hash_key} exists in {parent_table}",
-            asset_key=satellite.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=satellite.table,
-            evaluator=_references(
-                parent_table,
-                parent.hash_key,
-                child_columns=[satellite.parent_hash_key],
-                layer=model.layer,
+    checks = _table_checks(
+        model,
+        keys,
+        asset_key=satellite.asset_key,
+        table=satellite.table,
+        specs=[
+            ("not_empty", f"Satellite {satellite.table} is not empty", _not_empty()),
+            (
+                "hashdiff_not_null",
+                f"Hashdiff {satellite.hashdiff_column} is never null",
+                _not_null([satellite.hashdiff_column]),
             ),
+            (
+                "parent_hashdiff_unique",
+                "(parent key, hashdiff) pairs are unique",
+                _unique("satellite key", [satellite.parent_hash_key, satellite.hashdiff_column]),
+            ),
+        ],
+    )
+    checks.extend(
+        _table_checks(
+            model,
+            keys,
+            asset_key=satellite.asset_key,
+            table=satellite.table,
+            specs=[
+                (
+                    "parent_key_exists",
+                    f"Parent key {satellite.parent_hash_key} exists in {parent.table}",
+                    _references(
+                        parent.table,
+                        parent.hash_key,
+                        child_columns=[satellite.parent_hash_key],
+                        layer=model.layer,
+                    ),
+                )
+            ],
             dependencies=[parent.asset_key],
-        ),
-        _make_check(
-            name="parent_hashdiff_unique",
-            description="(parent key, hashdiff) pairs are unique",
-            asset_key=satellite.asset_key,
-            keys=keys,
-            layer=model.layer,
-            table=satellite.table,
-            evaluator=_unique(
-                "satellite key", [satellite.parent_hash_key, satellite.hashdiff_column]
-            ),
-        ),
-    ]
+        )
+    )
+    return checks
 
 
 def build_vault_checks(
