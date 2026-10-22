@@ -39,12 +39,10 @@ attributes:
             store_id: store_id
   satellites:
     - name: store_profile
-      source: example_store
       parent: store
       attributes: [store_name, region, event_date]
       load_ts_column: created_at
     - name: order_details
-      source: example_order
       parent: order
       attributes: [quantity, unit_price, event_date]
       load_ts_column: created_at

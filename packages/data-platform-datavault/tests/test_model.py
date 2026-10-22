@@ -165,7 +165,7 @@ def multi_source_hub_spec() -> DataVaultModelSpec:
 
 def test_explicit_model_resolution_defaults() -> None:
     spec = base_spec(
-        satellites=[SatelliteSpec(name="profile", source="store_src", parent="store")],
+        satellites=[SatelliteSpec(name="profile", parent="store")],
     )
     model = build_model(spec, registry())
     assert model.satellites["profile"].table == "sat_profile"
@@ -280,281 +280,102 @@ def test_hub_duplicate_business_keys_rejected() -> None:
         )
 
 
-def test_satellite_on_hub_uses_parent_source_mapping() -> None:
+def test_satellite_on_multi_source_parent_rejected() -> None:
     spec = multi_source_hub_spec().model_copy(
         update={
             "satellites": [
-                SatelliteSpec(
-                    name="store_profile",
-                    source="legacy_store_src",
-                    parent="store",
-                    attributes=["store_name", "region"],
-                )
+                SatelliteSpec(name="store_profile", parent="store", attributes=["store_name"])
             ]
         }
     )
+    with pytest.raises(ContractError, match="single-source hub or link"):
+        build_model(spec, registry())
+
+
+def test_satellite_inherits_parent_source_and_key_mapping() -> None:
+    spec = base_spec(
+        sources=[
+            *sources(),
+            VaultSourceSpec(
+                name="legacy_store_src", contract="legacy_store", pipeline_name="p_legacy_store"
+            ),
+        ],
+        hubs=[
+            HubSpec(
+                name="store",
+                business_keys=["store_id"],
+                sources=[
+                    SourceMappingSpec(name="legacy_store_src", columns={"store_id": "store_code"})
+                ],
+            )
+        ],
+        satellites=[SatelliteSpec(name="store_profile", parent="store", attributes=["store_name"])],
+    )
     satellite = build_model(spec, registry()).satellites["store_profile"]
 
-    assert satellite.parent_columns == ("store_id",)
+    assert satellite.source.name == "legacy_store_src"
     assert satellite.parent_source_columns == (("store_id", "store_code"),)
+    assert satellite.attribute_source_columns == (("store_name", "store_name"),)
+
+
+def test_satellite_default_attributes_exclude_renamed_parent_key() -> None:
+    spec = base_spec(
+        sources=[
+            *sources(),
+            VaultSourceSpec(
+                name="legacy_store_src", contract="legacy_store", pipeline_name="p_legacy_store"
+            ),
+        ],
+        hubs=[
+            HubSpec(
+                name="store",
+                business_keys=["store_id"],
+                sources=[
+                    SourceMappingSpec(name="legacy_store_src", columns={"store_id": "store_code"})
+                ],
+            )
+        ],
+        satellites=[SatelliteSpec(name="store_profile", parent="store")],
+    )
+    satellite = build_model(spec, registry()).satellites["store_profile"]
+
+    assert satellite.attributes == ("store_name", "region")
+    assert "store_code" not in satellite.attributes
+
+
+def test_satellite_attributes_can_map_columns() -> None:
+    spec = base_spec(
+        satellites=[
+            SatelliteSpec(
+                name="store_profile",
+                parent="store",
+                columns={"display_name": "store_name", "region": "region"},
+            )
+        ]
+    )
+    satellite = build_model(spec, registry()).satellites["store_profile"]
+
+    assert satellite.attributes == ("display_name", "region")
     assert satellite.attribute_source_columns == (
-        ("store_name", "store_name"),
+        ("display_name", "store_name"),
         ("region", "region"),
     )
 
 
-def test_unknown_source_rejected() -> None:
-    spec = base_spec(
-        hubs=[
-            HubSpec(
-                name="x",
-                sources=[SourceMappingSpec(name="nope", columns={"store_id": "store_id"})],
-                business_keys=["store_id"],
-            )
-        ]
-    )
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_unknown_hub_in_link_rejected() -> None:
-    spec = base_spec(
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[LinkRelationship(hub="ghost", columns=["order_id"])],
-                sources=[SourceMappingSpec(name="order_src", columns={"order_id": "order_id"})],
-            )
-        ]
-    )
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_link_relationship_arity_must_match_hub_keys() -> None:
-    spec = base_spec(
-        hubs=[hub("store", "store_src", ["store_id", "region"])],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
-                sources=[SourceMappingSpec(name="order_src", columns={"store_id": "store_id"})],
-            )
-        ],
-    )
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_link_sources_resolve_column_mappings() -> None:
-    link = build_model(multi_source_link_spec(), registry()).links["order_store"]
-
-    assert [link_source.source.name for link_source in link.sources] == [
-        "order_src",
-        "order_archive_src",
-    ]
-    assert link.sources[0].columns == (("order_id", "order_id"), ("store_id", "store_id"))
-    assert link.sources[0].physical_columns == ["order_id", "store_id"]
-    assert link.hash.columns == ("order_id", "store_id")
-    assert link.relationships[1].hub_hash.columns == ("store_id",)
-    assert [key.to_user_string() for key in link.source_asset_keys] == [
-        "p_order/silver/order",
-        "p_order_archive/silver/order",
-    ]
-
-
-def test_link_asset_dependencies_and_mappings() -> None:
-    model = build_model(multi_source_link_spec(), registry())
-    assets = build_vault_assets(
-        model,
-        {
-            "spark": "spark",
-            "lakehouse": "lakehouse",
-            "metadata": "metadata",
-            "io_manager": "delta_io_manager",
-        },
-    )
-    key = dg.AssetKey(["v", "link", "lnk_order_store"])
-    asset = next(item for item in assets if key in item.keys)
-
-    assert {dependency.to_user_string() for dependency in asset.asset_deps[key]} == {
-        "p_order/silver/order",
-        "p_order_archive/silver/order",
-        "v/hub/hub_order",
-        "v/hub/hub_store",
-    }
-    metadata = asset.metadata_by_key[key]
-    assert metadata["datavault/sources"] == ["order_src", "order_archive_src"]
-    assert metadata["datavault/source_columns"] == {
-        "order_src": {"order_id": "order_id", "store_id": "store_id"},
-        "order_archive_src": {"order_id": "order_id", "store_id": "store_id"},
-    }
-
-
-def test_link_source_must_exist() -> None:
-    spec = base_spec(
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
-                sources=[SourceMappingSpec(name="nope", columns={"store_id": "store_id"})],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match="unknown source 'nope'"):
-        build_model(spec, registry())
-
-
-def test_mapped_column_must_exist_in_source() -> None:
-    spec = base_spec(
-        sources=[
-            *sources(),
-            VaultSourceSpec(name="customer_src", contract="customer", pipeline_name="p_customer"),
-        ],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
-                sources=[SourceMappingSpec(name="customer_src", columns={"store_id": "store_id"})],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match="has no column 'store_id'"):
-        build_model(spec, registry())
-
-
-def test_link_source_must_map_every_key_column() -> None:
-    spec = base_spec(
-        hubs=[
-            hub("store", "store_src", ["store_id"]),
-            hub("order", "order_src", ["order_id"]),
-        ],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"]),
-                    LinkRelationship(hub="store", columns=["store_id"]),
-                ],
-                sources=[SourceMappingSpec(name="order_src", columns={"order_id": "order_id"})],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match=r"missing mappings for \['store_id'\]"):
-        build_model(spec, registry())
-
-
-def test_link_source_must_not_map_unknown_columns() -> None:
-    spec = base_spec(
-        hubs=[hub("order", "order_src", ["order_id"])],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[LinkRelationship(hub="order", columns=["order_id"])],
-                sources=[
-                    SourceMappingSpec(
-                        name="order_src",
-                        columns={"order_id": "order_id", "bogus": "quantity"},
-                    )
-                ],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match=r"maps unknown columns \['bogus'\]"):
-        build_model(spec, registry())
-
-
-def test_link_source_must_not_map_two_keys_to_one_column() -> None:
-    spec = base_spec(
-        hubs=[
-            hub("order", "order_src", ["order_id"]),
-            hub("store", "store_src", ["store_id"]),
-        ],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"]),
-                    LinkRelationship(hub="store", columns=["store_id"]),
-                ],
-                sources=[
-                    SourceMappingSpec(
-                        name="order_src",
-                        columns={"order_id": "order_id", "store_id": "order_id"},
-                    )
-                ],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match="maps multiple keys to the same column"):
-        build_model(spec, registry())
-
-
-def test_link_duplicate_key_columns_rejected() -> None:
-    spec = base_spec(
-        hubs=[
-            hub("order", "order_src", ["order_id"]),
-            hub("store", "store_src", ["store_id"]),
-        ],
-        links=[
-            LinkSpec(
-                name="bad",
-                relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"]),
-                    LinkRelationship(hub="store", columns=["order_id"]),
-                ],
-                sources=[SourceMappingSpec(name="order_src", columns={"order_id": "order_id"})],
-            )
-        ],
-    )
-    with pytest.raises(ContractError, match="duplicate link columns"):
-        build_model(spec, registry())
-
-
-def test_link_requires_sources() -> None:
-    with pytest.raises(ValidationError):
-        LinkSpec.model_validate(
-            {
-                "name": "bad",
-                "relationships": [{"hub": "order", "columns": ["order_id"]}],
-            }
-        )
-
-
-def test_link_duplicate_source_names_rejected() -> None:
-    with pytest.raises(ValidationError):
-        LinkSpec(
-            name="bad",
-            relationships=[LinkRelationship(hub="order", columns=["order_id"])],
-            sources=[
-                SourceMappingSpec(name="order_src", columns={"order_id": "order_id"}),
-                SourceMappingSpec(name="order_src", columns={"order_id": "order_id"}),
-            ],
-        )
-
-
 def test_unknown_satellite_parent_rejected() -> None:
-    spec = base_spec(satellites=[SatelliteSpec(name="x", source="store_src", parent="ghost")])
+    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="ghost")])
     with pytest.raises(ContractError):
         build_model(spec, registry())
 
 
 def test_satellite_attribute_must_exist() -> None:
-    spec = base_spec(
-        satellites=[
-            SatelliteSpec(name="x", source="store_src", parent="store", attributes=["nope"])
-        ]
-    )
+    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="store", attributes=["nope"])])
     with pytest.raises(ContractError):
         build_model(spec, registry())
 
 
 def test_satellite_attribute_cannot_be_parent_key() -> None:
-    spec = base_spec(
-        satellites=[
-            SatelliteSpec(name="x", source="store_src", parent="store", attributes=["store_id"])
-        ]
-    )
+    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="store", attributes=["store_id"])])
     with pytest.raises(ContractError):
         build_model(spec, registry())
 
@@ -564,7 +385,6 @@ def test_satellite_load_ts_column_must_exist() -> None:
         satellites=[
             SatelliteSpec(
                 name="x",
-                source="store_src",
                 parent="store",
                 attributes=["store_name"],
                 load_ts_column="missing",

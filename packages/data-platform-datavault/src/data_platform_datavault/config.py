@@ -116,12 +116,18 @@ class LinkSpec(SourceMappedSpec):
 
 
 class SatelliteSpec(BaseSpec):
-    """A satellite: descriptive attributes attached to a hub or link."""
+    """A satellite: descriptive attributes attached to a hub or link.
+
+    The physical source is inherited from the parent hub/link, which must
+    currently have exactly one source. ``attributes`` lists canonical output
+    names; ``columns`` optionally maps each canonical attribute to a differently
+    named source column.
+    """
 
     name: str
-    source: str
     parent: str
     attributes: list[str] = Field(default_factory=list)
+    columns: dict[str, str] = Field(default_factory=dict)
     table: str | None = None
     hashdiff_column: str = "hashdiff"
     load_ts_column: str | None = None
@@ -185,14 +191,6 @@ class DataVaultModelSpec(BaseSpec):
         return self.resource_keys.get(name, default)
 
 
-def validate_attributes_against_contract(
-    attributes: list[str], available: set[str], *, satellite: str
-) -> None:
-    missing = [attribute for attribute in attributes if attribute not in available]
-    if missing:
-        raise ValueError(f"satellite '{satellite}' attributes not in source: {missing}")
-
-
 __all__ = [
     "DataVaultModelSpec",
     "HubSpec",
@@ -201,5 +199,4 @@ __all__ = [
     "SatelliteSpec",
     "SourceMappingSpec",
     "VaultSourceSpec",
-    "validate_attributes_against_contract",
 ]

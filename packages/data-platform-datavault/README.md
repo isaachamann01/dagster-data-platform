@@ -45,14 +45,18 @@ attributes:
         - name: order
           columns: {order_id: order_id, store_id: store_id}
   satellites:
-    - {name: store_profile, source: store, parent: store, attributes: [store_name, region]}
-    - {name: order_details, source: order, parent: order, attributes: [quantity]}
+    - {name: store_profile, parent: store, attributes: [store_name, region]}
+    - {name: order_details, parent: order, attributes: [quantity]}
 ```
 
 `relationships` defines the canonical key schema; `sources` maps it onto one or
 more physical tables. Add another source with its own `columns` mapping to union
 link instances from multiple feeds — the first declared source wins duplicate
 key combinations.
+
+Satellites inherit the source of their parent hub/link (currently the parent
+must have exactly one source). `attributes` lists canonical output names;
+`columns` optionally maps them to different source column names.
 
 The component needs the resources `spark`, `lakehouse`, `metadata`, and
 `delta_io_manager` (override with `resource_keys`).

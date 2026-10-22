@@ -36,12 +36,10 @@ attributes:
             store_id: store_id
   satellites:
     - name: store_profile
-      source: tiny_store
       parent: store
       attributes: [store_name, region]
       load_ts_column: created_at
     - name: order_details
-      source: tiny_order
       parent: order
       attributes: [quantity]
       load_ts_column: created_at

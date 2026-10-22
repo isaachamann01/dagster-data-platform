@@ -321,12 +321,18 @@ def _resolve_link(
 
 def _resolve_satellite(
     spec: SatelliteSpec,
-    sources: dict[str, ResolvedSource],
     parent: ResolvedHub | ResolvedLink,
     model: DataVaultModelSpec,
 ) -> ResolvedSatellite:
-    source = _source_or_error(spec.source, sources, entity=f"satellite '{spec.name}'")
+    if len(parent.sources) != 1:
+        raise ContractError(
+            f"satellite '{spec.name}': parent '{parent.name}' has {len(parent.sources)} sources; "
+            "satellites currently require a single-source hub or link"
+        )
+    parent_mapping = parent.sources[0]
+    source = parent_mapping.source
     available = _source_columns(source)
+
     if isinstance(parent, ResolvedHub):
         parent_kind = HUB_KIND
         parent_columns = parent.business_keys
@@ -334,16 +340,7 @@ def _resolve_satellite(
         parent_kind = LINK_KIND
         parent_columns = parent.hash.columns
 
-    parent_mapping = next(
-        (mapping for mapping in parent.sources if mapping.source.name == source.name),
-        None,
-    )
-    if parent_mapping is None:
-        parent_source_columns = tuple((column, column) for column in parent_columns)
-    else:
-        mapping = dict(parent_mapping.columns)
-        parent_source_columns = tuple((column, mapping[column]) for column in parent_columns)
-
+    parent_source_columns = parent_mapping.columns
     for canonical, physical in parent_source_columns:
         if physical not in available:
             raise ContractError(
@@ -352,23 +349,46 @@ def _resolve_satellite(
             )
 
     attributes = list(spec.attributes)
+    columns = dict(spec.columns)
+    parent_physical = {physical for _, physical in parent_source_columns}
+    if not attributes and columns:
+        attributes = list(columns)
+    if columns:
+        missing = [attribute for attribute in attributes if attribute not in columns]
+        if missing:
+            raise ContractError(
+                f"satellite '{spec.name}': columns is missing mappings for {missing}"
+            )
+        extra = [attribute for attribute in columns if attribute not in attributes]
+        if extra:
+            raise ContractError(f"satellite '{spec.name}': columns maps unknown attributes {extra}")
     if not attributes:
-        excluded = set(parent_columns) | set(source.contract.primary_key_columns)
+        excluded = set(parent_columns) | parent_physical | set(source.contract.primary_key_columns)
         attributes = [
             column
             for column in source.contract.column_names
             if column not in excluded and not column.startswith(METADATA_COLUMN_PREFIX)
         ]
-    for attribute in attributes:
-        if attribute not in available:
+        columns = {attribute: attribute for attribute in attributes}
+    attribute_source_columns = tuple(
+        (attribute, columns.get(attribute, attribute)) for attribute in attributes
+    )
+
+    for canonical, physical in attribute_source_columns:
+        if canonical in parent_columns:
             raise ContractError(
-                f"satellite '{spec.name}': attribute '{attribute}' is not a column of source "
-                f"'{source.name}'"
-            )
-        if attribute in parent_columns:
-            raise ContractError(
-                f"satellite '{spec.name}': attribute '{attribute}' is a parent key column; "
+                f"satellite '{spec.name}': attribute '{canonical}' is a parent key column; "
                 "attributes must be descriptive payload"
+            )
+        if physical in parent_physical:
+            raise ContractError(
+                f"satellite '{spec.name}': attribute '{canonical}' maps to parent key column "
+                f"'{physical}'"
+            )
+        if physical not in available:
+            raise ContractError(
+                f"satellite '{spec.name}': attribute '{canonical}' maps to missing column "
+                f"'{physical}' in source '{source.name}'"
             )
     if not attributes:
         raise ContractError(f"satellite '{spec.name}' has no attributes to track")
@@ -391,7 +411,7 @@ def _resolve_satellite(
         parent_source_columns=parent_source_columns,
         parent_hash=parent.hash,
         attributes=tuple(attributes),
-        attribute_source_columns=tuple((attribute, attribute) for attribute in attributes),
+        attribute_source_columns=attribute_source_columns,
         hashdiff_column=spec.hashdiff_column,
         load_ts_column=spec.load_ts_column,
         asset_key=dg.AssetKey([model.vault_name, SAT_KIND, table]),
@@ -436,9 +456,7 @@ def build_model(spec: DataVaultModelSpec, registry: ContractRegistry) -> DataVau
             raise ContractError(f"duplicate satellite name '{satellite_spec.name}'")
         parent = model.parent(satellite_spec.parent)
         satellite_names.add(satellite_spec.name)
-        model.satellites[satellite_spec.name] = _resolve_satellite(
-            satellite_spec, sources, parent, spec
-        )
+        model.satellites[satellite_spec.name] = _resolve_satellite(satellite_spec, parent, spec)
 
     if not model.tables():
         raise ContractError("the vault model resolved to zero tables")

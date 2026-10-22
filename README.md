@@ -191,7 +191,6 @@ attributes:
           columns: {order_id: order_id, store_id: store_id}
   satellites:
     - name: store_profile
-      source: example_store
       parent: store
       attributes: [store_name, region, event_date]
       load_ts_column: created_at
@@ -236,6 +235,12 @@ rows, and deduplicates by the link hash. If the same key combination appears in
 several sources, the **first declared source wins** (deterministic priority), so
 `record_source` is stable. Rows from all sources carry their own
 `record_source`; `load_ts` is the run timestamp. No joins are performed.
+
+Satellites inherit the physical source of their parent hub/link, which must
+currently have exactly one source. `attributes` lists canonical output names;
+`columns` optionally maps each one to a differently named source column. A
+satellite on a multi-source parent is rejected until multi-source satellite
+support is added.
 
 Parameters that shape the output:
 
@@ -486,7 +491,7 @@ attributes:
         - name: tiny_order
           columns: {order_id: order_id, store_id: store_id}
   satellites:
-    - {name: store_profile, source: tiny_store, parent: store, attributes: [store_name, region]}
+    - {name: store_profile, parent: store, attributes: [store_name, region]}
 ```
 
 Its tests load the definitions without Spark and assert the generated asset keys.
@@ -553,8 +558,8 @@ Spark 4.2.0, Delta 4.4.0):
 | `ruff format --check .` | 77 files already formatted |
 | `ruff check .` | all checks passed |
 | `mypy` (root config, all five `src/` trees) | no issues in 53 source files |
-| `pytest -m "not docker and not slow"` | 131 passed, 12 deselected |
-| `pytest tests/smoke -m smoke` | 11 passed in 339.32s (Spark/Delta end-to-end, medallion + vault) |
+| `pytest -m "not docker and not slow"` | 121 passed, 12 deselected |
+| `pytest tests/smoke -m smoke` | 11 passed in 337.33s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |
 | `docker build -f docker/Dockerfile.dagster ...` | image built |

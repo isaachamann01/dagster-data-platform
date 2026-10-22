@@ -27,7 +27,6 @@ satellites) and generates one Delta-backed Dagster asset per table. Loadable fro
               columns: {order_id: order_id, store_id: store_id}
       satellites:
         - name: store_profile
-          source: example_store
           parent: store
           attributes: [store_name, region, event_date]
           load_ts_column: created_at
