@@ -16,7 +16,8 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-from data_platform_datavault._common import (
+from data_platform_datavault.hashing import hash_expression
+from data_platform_datavault.model import (
     META_LAYER,
     META_MERGE_KEYS,
     META_PARTITION_BY,
@@ -24,11 +25,8 @@ from data_platform_datavault._common import (
     META_TABLE,
     META_UPDATE_MATCHED,
     META_WRITE_MODE,
-    DeltaTableWriter,
-)
-from data_platform_datavault.hashing import hash_expression
-from data_platform_datavault.model import (
     DataVaultModel,
+    DeltaTableWriter,
     HashConfig,
     ResolvedHub,
     ResolvedLink,

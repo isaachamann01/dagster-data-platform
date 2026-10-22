@@ -63,9 +63,9 @@ The component needs the resources `spark`, `lakehouse`, `metadata`, and
 
 ## Porting to another common package
 
-All host coupling lives in `src/data_platform_datavault/_common.py`. To retarget
-the package to a different (but similar) common library, change only those
-imports:
+All host coupling lives in the host-import block at the top of
+`src/data_platform_datavault/model.py`. To retarget the package to a different
+(but similar) common library, change only those imports:
 
 | Symbol | Purpose |
 |---|---|
@@ -79,7 +79,7 @@ imports:
 | `METADATA_COLUMN_PREFIX` | Prefix excluded from satellite attributes |
 
 Everything else in the package is self-contained. Copy the directory or install
-the wheel, retarget `_common.py`, and point `defs.yaml` at
+the wheel, retarget the host imports in `model.py`, and point `defs.yaml` at
 `data_platform_datavault.components.data_vault_factory.DataVaultFactory`.
 
 ## Tests

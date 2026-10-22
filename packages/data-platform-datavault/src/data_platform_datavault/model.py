@@ -16,12 +16,22 @@ import dagster as dg
 from dagster import Resolvable
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from data_platform_datavault._common import (
-    METADATA_COLUMN_PREFIX,
-    ContractError,
-    ContractRegistry,
-    DataContract,
+from data_platform_common.contracts import parse_contract_document
+from data_platform_common.contracts.models import DataContract
+from data_platform_common.contracts.registry import ContractRegistry
+from data_platform_common.errors import ContractError
+from data_platform_common.imports import build_trusted_prefixes
+from data_platform_common.io.delta import DeltaTableWriter
+from data_platform_common.io.manager import (
+    META_LAYER,
+    META_MERGE_KEYS,
+    META_PARTITION_BY,
+    META_SCHEMA_EVOLUTION,
+    META_TABLE,
+    META_UPDATE_MATCHED,
+    META_WRITE_MODE,
 )
+from data_platform_common.spark_types import METADATA_COLUMN_PREFIX
 
 
 class BaseSpec(Resolvable, BaseModel):
@@ -619,3 +629,30 @@ def build_model(spec: DataVaultModelSpec, registry: ContractRegistry) -> DataVau
     if not (model.hubs or model.links or model.satellites):
         raise ContractError("the vault model resolved to zero tables")
     return model
+
+
+__all__ = [
+    "ContractError",
+    "ContractRegistry",
+    "DataContract",
+    "DataVaultModel",
+    "DataVaultModelSpec",
+    "DeltaTableWriter",
+    "HubSpec",
+    "LinkRelationship",
+    "LinkSpec",
+    "META_LAYER",
+    "META_MERGE_KEYS",
+    "META_PARTITION_BY",
+    "META_SCHEMA_EVOLUTION",
+    "META_TABLE",
+    "META_UPDATE_MATCHED",
+    "META_WRITE_MODE",
+    "METADATA_COLUMN_PREFIX",
+    "SatelliteSpec",
+    "SourceMappingSpec",
+    "VaultSourceSpec",
+    "build_model",
+    "build_trusted_prefixes",
+    "parse_contract_document",
+]

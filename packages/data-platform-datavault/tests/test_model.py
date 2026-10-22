@@ -16,12 +16,12 @@ from data_platform_datavault import (
     VaultSourceSpec,
     build_model,
 )
-from data_platform_datavault._common import (
+from data_platform_datavault.assets import build_vault_assets
+from data_platform_datavault.model import (
     ContractError,
     ContractRegistry,
     parse_contract_document,
 )
-from data_platform_datavault.assets import build_vault_assets
 
 
 def store_contract() -> dict:

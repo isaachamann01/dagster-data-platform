@@ -35,8 +35,7 @@ dagster_pipelines/
 │       └── transformations.py            json_to_dataframe, drop_columns_not_in_contract
 ├── packages/data-platform-datavault/     Standalone Data Vault 2.0 package
 │   └── src/data_platform_datavault/
-│       ├── _common.py                    Adapter: the only host-package imports
-│       ├── model.py                      Specs + resolved hubs, links, satellites
+│       ├── model.py                      Specs, host adapter, resolved model
 │       ├── assets.py                     Hub/link/satellite Delta assets
 │       ├── hashing.py                    Deterministic MD5 hash keys and hashdiffs
 │       └── components/                   DataVaultFactory component
@@ -61,7 +60,7 @@ dagster_pipelines/
 - **The components are reusable.** `projects/test_project` depends only on the published
   packages and declares a full medallion pipeline and vault with no project-local framework code.
 - **Data Vault is separable.** All Data Vault code lives in `data-platform-datavault`; the only
-  coupling to the host platform is the single `_common.py` adapter module.
+  coupling to the host platform is the host-import block in `model.py`.
 - **Resources are environment-driven.** Spark, storage, REST, Trino, and metadata configuration
   come from environment variables so the same code runs locally or in Compose/CI.
 
@@ -498,8 +497,8 @@ Its tests load the definitions without Spark and assert the generated asset keys
 ### Porting the Data Vault component to another project
 
 The Data Vault code is a **standalone package** (`packages/data-platform-datavault`).
-All host-package coupling is isolated in one adapter module:
-`src/data_platform_datavault/_common.py`.
+All host-package coupling is isolated in the host-import block at the top of
+`src/data_platform_datavault/model.py`.
 
 1. **Install the package** (wheel, editable checkout, or git reference):
    ```bash
@@ -507,11 +506,11 @@ All host-package coupling is isolated in one adapter module:
    ```
    It depends on `data-platform-common` for the shared contract/IO layer, but has
    no dependency on `example_pipelines`.
-2. **Retarget the adapter if your common package differs.** `_common.py` imports
+2. **Retarget the host imports if your common package differs.** `model.py` imports
    the host symbols (`DataContract`, `ContractRegistry`, `parse_contract_document`,
    `ContractError`, `build_trusted_prefixes`, `DeltaTableWriter`, the `META_*`
    write-contract keys, and `METADATA_COLUMN_PREFIX`). Point those imports at your
-   equivalent modules — that single file is the entire porting surface. If your
+   equivalent modules — that block is the entire porting surface. If your
    common package uses the same module layout, only the top-level package name changes.
 3. **Provide resources.** The vault needs `spark`, `lakehouse`, `metadata`, and `delta_io_manager`.
    The simplest wiring is the shared environment builder in your `definitions.py`:
@@ -554,9 +553,9 @@ Spark 4.2.0, Delta 4.4.0):
 
 | Command | Result |
 | --- | --- |
-| `ruff format --check .` | 76 files already formatted |
+| `ruff format --check .` | 75 files already formatted |
 | `ruff check .` | all checks passed |
-| `mypy` (root config, all five `src/` trees) | no issues in 52 source files |
+| `mypy` (root config, all five `src/` trees) | no issues in 51 source files |
 | `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
 | `pytest tests/smoke -m smoke` | 11 passed in 348.23s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |

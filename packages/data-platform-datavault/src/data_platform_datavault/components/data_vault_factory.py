@@ -53,9 +53,13 @@ from __future__ import annotations
 import dagster as dg
 from dagster.components import Component, ComponentLoadContext
 
-from data_platform_datavault._common import ContractRegistry, build_trusted_prefixes
 from data_platform_datavault.assets import build_vault_assets
-from data_platform_datavault.model import DataVaultModelSpec, build_model
+from data_platform_datavault.model import (
+    ContractRegistry,
+    DataVaultModelSpec,
+    build_model,
+    build_trusted_prefixes,
+)
 
 
 class DataVaultFactory(Component, DataVaultModelSpec):
