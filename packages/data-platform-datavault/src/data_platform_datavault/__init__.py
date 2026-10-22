@@ -1,14 +1,5 @@
 """Data Vault 2.0: hashing, specs, resolved model, assets, and component."""
 
-from data_platform_datavault.config import (
-    DataVaultModelSpec,
-    HubSpec,
-    LinkRelationship,
-    LinkSpec,
-    SatelliteSpec,
-    SourceMappingSpec,
-    VaultSourceSpec,
-)
 from data_platform_datavault.hashing import (
     hash_expression,
     hash_payload,
@@ -16,6 +7,13 @@ from data_platform_datavault.hashing import (
 )
 from data_platform_datavault.model import (
     DataVaultModel,
+    DataVaultModelSpec,
+    HubSpec,
+    LinkRelationship,
+    LinkSpec,
+    SatelliteSpec,
+    SourceMappingSpec,
+    VaultSourceSpec,
     build_model,
 )
 

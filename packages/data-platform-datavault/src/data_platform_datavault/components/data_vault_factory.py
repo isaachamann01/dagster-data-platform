@@ -55,8 +55,7 @@ from dagster.components import Component, ComponentLoadContext
 
 from data_platform_datavault._common import ContractRegistry, build_trusted_prefixes
 from data_platform_datavault.assets import build_vault_assets
-from data_platform_datavault.config import DataVaultModelSpec
-from data_platform_datavault.model import build_model
+from data_platform_datavault.model import DataVaultModelSpec, build_model
 
 
 class DataVaultFactory(Component, DataVaultModelSpec):
