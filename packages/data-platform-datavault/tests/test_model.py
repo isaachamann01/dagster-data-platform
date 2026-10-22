@@ -16,7 +16,7 @@ from data_platform_datavault import (
     VaultSourceSpec,
     build_model,
 )
-from data_platform_datavault.assets import build_vault_assets
+from data_platform_datavault.components.data_vault_factory import build_vault_assets
 from data_platform_datavault.model import (
     ContractError,
     ContractRegistry,

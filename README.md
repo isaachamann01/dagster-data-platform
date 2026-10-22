@@ -36,9 +36,8 @@ dagster_pipelines/
 ├── packages/data-platform-datavault/     Standalone Data Vault 2.0 package
 │   └── src/data_platform_datavault/
 │       ├── model.py                      Specs, host adapter, resolved model
-│       ├── assets.py                     Hub/link/satellite Delta assets
 │       ├── hashing.py                    Deterministic MD5 hash keys and hashdiffs
-│       └── components/                   DataVaultFactory component
+│       └── components/                   DataVaultFactory + asset builders
 ├── services/synthetic-api/               FastAPI synthetic-data service
 ├── projects/example_pipelines/           Three medallion pipelines, six contracts, one vault
 ├── projects/test_project/                Minimal separate project proving reusability
@@ -553,9 +552,9 @@ Spark 4.2.0, Delta 4.4.0):
 
 | Command | Result |
 | --- | --- |
-| `ruff format --check .` | 75 files already formatted |
+| `ruff format --check .` | 74 files already formatted |
 | `ruff check .` | all checks passed |
-| `mypy` (root config, all five `src/` trees) | no issues in 51 source files |
+| `mypy` (root config, all five `src/` trees) | no issues in 50 source files |
 | `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
 | `pytest tests/smoke -m smoke` | 11 passed in 348.23s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
