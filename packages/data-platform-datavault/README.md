@@ -26,8 +26,16 @@ attributes:
       contract: my_project.contracts.get_order_silver_path
       pipeline_name: order_pipeline
   hubs:
-    - {name: store, source: store, business_keys: [store_id]}
-    - {name: order, source: order, business_keys: [order_id]}
+    - name: store
+      business_keys: [store_id]
+      sources:
+        - name: store
+          columns: {store_id: store_id}
+    - name: order
+      business_keys: [order_id]
+      sources:
+        - name: order
+          columns: {order_id: order_id}
   links:
     - name: store_order
       relationships:

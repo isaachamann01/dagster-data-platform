@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Literal
+from typing import Literal, Self
 
 from dagster import Resolvable
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -41,11 +41,36 @@ class VaultSourceSpec(BaseSpec):
         return _check_name(value, "source")
 
 
-class HubSpec(BaseSpec):
+class SourceMappingSpec(BaseSpec):
+    """One physical source and its canonical-to-physical column mapping."""
+
+    name: str
+    columns: dict[str, str] = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _check_name(value, "source")
+
+
+class SourceMappedSpec(BaseSpec):
+    """Base for specs that read canonical columns from one or more sources."""
+
+    sources: list[SourceMappingSpec] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_source_names(self) -> Self:
+        names = [source.name for source in self.sources]
+        if len(set(names)) != len(names):
+            label = getattr(self, "name", "vault")
+            raise ValueError(f"{label}: duplicate source names in sources")
+        return self
+
+
+class HubSpec(SourceMappedSpec):
     """A hub: one row per distinct business key."""
 
     name: str
-    source: str
     business_keys: list[str] = Field(min_length=1)
     table: str | None = None
     hash_key: str | None = None
@@ -56,6 +81,12 @@ class HubSpec(BaseSpec):
     def _validate_name(cls, value: str) -> str:
         return _check_name(value, "hub")
 
+    @model_validator(mode="after")
+    def _validate_business_keys(self) -> Self:
+        if len(set(self.business_keys)) != len(self.business_keys):
+            raise ValueError(f"hub '{self.name}': duplicate business keys")
+        return self
+
 
 class LinkRelationship(BaseSpec):
     """A participating hub and the canonical key columns it contributes."""
@@ -64,23 +95,7 @@ class LinkRelationship(BaseSpec):
     columns: list[str] = Field(min_length=1)
 
 
-class LinkSourceSpec(BaseSpec):
-    """One physical source contributing rows to a link.
-
-    ``columns`` maps each canonical link column declared by the relationships to
-    the column that holds it in this source.
-    """
-
-    name: str
-    columns: dict[str, str] = Field(min_length=1)
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, value: str) -> str:
-        return _check_name(value, "link source")
-
-
-class LinkSpec(BaseSpec):
+class LinkSpec(SourceMappedSpec):
     """A link: one row per distinct combination of participating hub keys.
 
     ``relationships`` defines the canonical key schema and hash order;
@@ -90,7 +105,6 @@ class LinkSpec(BaseSpec):
 
     name: str
     relationships: list[LinkRelationship] = Field(min_length=1)
-    sources: list[LinkSourceSpec] = Field(min_length=1)
     table: str | None = None
     hash_key: str | None = None
     hash_prefix: str | None = None
@@ -99,13 +113,6 @@ class LinkSpec(BaseSpec):
     @classmethod
     def _validate_name(cls, value: str) -> str:
         return _check_name(value, "link")
-
-    @model_validator(mode="after")
-    def _validate_source_names(self) -> LinkSpec:
-        names = [source.name for source in self.sources]
-        if len(set(names)) != len(names):
-            raise ValueError(f"link '{self.name}': duplicate source names in sources")
-        return self
 
 
 class SatelliteSpec(BaseSpec):
@@ -190,9 +197,9 @@ __all__ = [
     "DataVaultModelSpec",
     "HubSpec",
     "LinkRelationship",
-    "LinkSourceSpec",
     "LinkSpec",
     "SatelliteSpec",
+    "SourceMappingSpec",
     "VaultSourceSpec",
     "validate_attributes_against_contract",
 ]

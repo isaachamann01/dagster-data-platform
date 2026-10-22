@@ -171,8 +171,16 @@ attributes:
       contract: data_contracts.get_example_order_silver_contract_path
       pipeline_name: example_order
   hubs:
-    - {name: store, source: example_store, business_keys: [store_id]}
-    - {name: order, source: example_order, business_keys: [order_id]}
+    - name: store
+      business_keys: [store_id]
+      sources:
+        - name: example_store
+          columns: {store_id: store_id}
+    - name: order
+      business_keys: [order_id]
+      sources:
+        - name: example_order
+          columns: {order_id: order_id}
   links:
     - name: store_order
       relationships:
@@ -188,6 +196,10 @@ attributes:
       attributes: [store_name, region, event_date]
       load_ts_column: created_at
 ```
+
+Hubs and links both accept one or more `sources`, each with a canonical-to-physical
+column mapping. Their rows are unioned and deduplicated by the hash; the first
+declared source wins duplicate key combinations, so `record_source` is stable.
 
 Generated tables (asset keys `[vault, kind, table]`, Delta layer
 `<layer>/<vault_name>`):
@@ -460,7 +472,11 @@ attributes:
       pipeline_name: tiny_store
     ...
   hubs:
-    - {name: store, source: tiny_store, business_keys: [store_id]}
+    - name: store
+      business_keys: [store_id]
+      sources:
+        - name: tiny_store
+          columns: {store_id: store_id}
   links:
     - name: store_order
       relationships:
@@ -537,7 +553,7 @@ Spark 4.2.0, Delta 4.4.0):
 | `ruff format --check .` | 77 files already formatted |
 | `ruff check .` | all checks passed |
 | `mypy` (root config, all five `src/` trees) | no issues in 53 source files |
-| `pytest -m "not docker and not slow"` | 124 passed, 12 deselected |
+| `pytest -m "not docker and not slow"` | 131 passed, 12 deselected |
 | `pytest tests/smoke -m smoke` | 11 passed in 327.62s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |

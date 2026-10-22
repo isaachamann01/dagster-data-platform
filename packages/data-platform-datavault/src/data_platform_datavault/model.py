@@ -22,6 +22,7 @@ from data_platform_datavault.config import (
     HubSpec,
     LinkSpec,
     SatelliteSpec,
+    SourceMappingSpec,
     VaultSourceSpec,
 )
 
@@ -51,18 +52,7 @@ class ResolvedSource:
 
 
 @dataclass(frozen=True)
-class ResolvedHub:
-    name: str
-    table: str
-    hash_key: str
-    source: ResolvedSource
-    business_keys: tuple[str, ...]
-    hash: HashConfig
-    asset_key: dg.AssetKey
-
-
-@dataclass(frozen=True)
-class ResolvedLinkSource:
+class ResolvedSourceMapping:
     """A physical source and its canonical-to-physical column mapping."""
 
     source: ResolvedSource
@@ -71,6 +61,21 @@ class ResolvedLinkSource:
     @property
     def physical_columns(self) -> list[str]:
         return [physical for _, physical in self.columns]
+
+
+@dataclass(frozen=True)
+class ResolvedHub:
+    name: str
+    table: str
+    hash_key: str
+    sources: tuple[ResolvedSourceMapping, ...]
+    business_keys: tuple[str, ...]
+    hash: HashConfig
+    asset_key: dg.AssetKey
+
+    @property
+    def source_asset_keys(self) -> list[dg.AssetKey]:
+        return [source_mapping.source.asset_key for source_mapping in self.sources]
 
 
 @dataclass(frozen=True)
@@ -87,7 +92,7 @@ class ResolvedLink:
     name: str
     table: str
     hash_key: str
-    sources: tuple[ResolvedLinkSource, ...]
+    sources: tuple[ResolvedSourceMapping, ...]
     relationships: tuple[ResolvedLinkRelationship, ...]
     hash: HashConfig
     asset_key: dg.AssetKey
@@ -98,7 +103,7 @@ class ResolvedLink:
 
     @property
     def source_asset_keys(self) -> list[dg.AssetKey]:
-        return [link_source.source.asset_key for link_source in self.sources]
+        return [source_mapping.source.asset_key for source_mapping in self.sources]
 
 
 @dataclass(frozen=True)
@@ -110,8 +115,10 @@ class ResolvedSatellite:
     parent_kind: str
     parent_hash_key: str
     parent_columns: tuple[str, ...]
+    parent_source_columns: tuple[tuple[str, str], ...]
     parent_hash: HashConfig
     attributes: tuple[str, ...]
+    attribute_source_columns: tuple[tuple[str, str], ...]
     hashdiff_column: str
     load_ts_column: str | None
     asset_key: dg.AssetKey
@@ -161,6 +168,48 @@ def _source_columns(source: ResolvedSource) -> set[str]:
     return set(source.contract.column_names)
 
 
+def _resolve_source_mappings(
+    canonical_columns: list[str],
+    source_specs: list[SourceMappingSpec],
+    sources: dict[str, ResolvedSource],
+    *,
+    entity: str,
+) -> list[ResolvedSourceMapping]:
+    """Resolve and validate a canonical-to-physical mapping per source."""
+
+    resolved: list[ResolvedSourceMapping] = []
+    for source_spec in source_specs:
+        source = _source_or_error(source_spec.name, sources, entity=entity)
+        missing = [column for column in canonical_columns if column not in source_spec.columns]
+        if missing:
+            raise ContractError(
+                f"{entity}: source '{source.name}' is missing mappings for {missing}"
+            )
+        extra = [column for column in source_spec.columns if column not in canonical_columns]
+        if extra:
+            raise ContractError(f"{entity}: source '{source.name}' maps unknown columns {extra}")
+
+        physical_columns = [source_spec.columns[column] for column in canonical_columns]
+        if len(set(physical_columns)) != len(physical_columns):
+            raise ContractError(
+                f"{entity}: source '{source.name}' maps multiple keys to the same column"
+            )
+        available = _source_columns(source)
+        for column in physical_columns:
+            if column not in available:
+                raise ContractError(
+                    f"{entity}: source '{source.name}' has no column '{column}' "
+                    f"(contract '{source.contract.name}')"
+                )
+        resolved.append(
+            ResolvedSourceMapping(
+                source=source,
+                columns=tuple(zip(canonical_columns, physical_columns, strict=True)),
+            )
+        )
+    return resolved
+
+
 def _hash_config(
     columns: Iterable[str], *, prefix: str | None, model: DataVaultModelSpec
 ) -> HashConfig:
@@ -188,19 +237,19 @@ def _source_or_error(
 def _resolve_hub(
     spec: HubSpec, sources: dict[str, ResolvedSource], model: DataVaultModelSpec
 ) -> ResolvedHub:
-    source = _source_or_error(spec.source, sources, entity=f"hub '{spec.name}'")
-    for key in spec.business_keys:
-        if key not in _source_columns(source):
-            raise ContractError(
-                f"hub '{spec.name}': business key '{key}' is not a column of source "
-                f"'{source.name}' (contract '{source.contract.name}')"
-            )
     table = spec.table or f"hub_{spec.name}"
     return ResolvedHub(
         name=spec.name,
         table=table,
         hash_key=spec.hash_key or f"{table}_hk",
-        source=source,
+        sources=tuple(
+            _resolve_source_mappings(
+                spec.business_keys,
+                spec.sources,
+                sources,
+                entity=f"hub '{spec.name}'",
+            )
+        ),
         business_keys=tuple(spec.business_keys),
         hash=_hash_config(spec.business_keys, prefix=spec.hash_prefix, model=model),
         asset_key=dg.AssetKey([model.vault_name, HUB_KIND, table]),
@@ -251,45 +300,19 @@ def _resolve_link(
     if duplicates:
         raise ContractError(f"link '{spec.name}': duplicate link columns {duplicates}")
 
-    resolved_sources: list[ResolvedLinkSource] = []
-    for source_spec in spec.sources:
-        source = _source_or_error(source_spec.name, sources, entity=f"link '{spec.name}' source")
-        missing = [column for column in key_columns if column not in source_spec.columns]
-        if missing:
-            raise ContractError(
-                f"link '{spec.name}': source '{source.name}' is missing mappings for {missing}"
-            )
-        extra = [column for column in source_spec.columns if column not in key_columns]
-        if extra:
-            raise ContractError(
-                f"link '{spec.name}': source '{source.name}' maps unknown link columns {extra}"
-            )
-
-        physical_columns = [source_spec.columns[column] for column in key_columns]
-        if len(set(physical_columns)) != len(physical_columns):
-            raise ContractError(
-                f"link '{spec.name}': source '{source.name}' maps multiple keys to the same column"
-            )
-        available = _source_columns(source)
-        for column in physical_columns:
-            if column not in available:
-                raise ContractError(
-                    f"link '{spec.name}': source '{source.name}' has no column '{column}' "
-                    f"(contract '{source.contract.name}')"
-                )
-        resolved_sources.append(
-            ResolvedLinkSource(
-                source=source,
-                columns=tuple(zip(key_columns, physical_columns, strict=True)),
-            )
-        )
-
     table = spec.table or f"lnk_{spec.name}"
     return ResolvedLink(
         name=spec.name,
         table=table,
         hash_key=spec.hash_key or f"{table}_hk",
-        sources=tuple(resolved_sources),
+        sources=tuple(
+            _resolve_source_mappings(
+                key_columns,
+                spec.sources,
+                sources,
+                entity=f"link '{spec.name}'",
+            )
+        ),
         relationships=tuple(resolved_relationships),
         hash=_hash_config(key_columns, prefix=spec.hash_prefix, model=model),
         asset_key=dg.AssetKey([model.vault_name, LINK_KIND, table]),
@@ -311,11 +334,21 @@ def _resolve_satellite(
         parent_kind = LINK_KIND
         parent_columns = parent.hash.columns
 
-    for column in parent_columns:
-        if column not in available:
+    parent_mapping = next(
+        (mapping for mapping in parent.sources if mapping.source.name == source.name),
+        None,
+    )
+    if parent_mapping is None:
+        parent_source_columns = tuple((column, column) for column in parent_columns)
+    else:
+        mapping = dict(parent_mapping.columns)
+        parent_source_columns = tuple((column, mapping[column]) for column in parent_columns)
+
+    for canonical, physical in parent_source_columns:
+        if physical not in available:
             raise ContractError(
                 f"satellite '{spec.name}': source '{source.name}' is missing parent key column "
-                f"'{column}' needed to compute '{parent.hash_key}'"
+                f"'{physical}' (for '{canonical}') needed to compute '{parent.hash_key}'"
             )
 
     attributes = list(spec.attributes)
@@ -355,8 +388,10 @@ def _resolve_satellite(
         parent_kind=parent_kind,
         parent_hash_key=parent.hash_key,
         parent_columns=tuple(parent_columns),
+        parent_source_columns=parent_source_columns,
         parent_hash=parent.hash,
         attributes=tuple(attributes),
+        attribute_source_columns=tuple((attribute, attribute) for attribute in attributes),
         hashdiff_column=spec.hashdiff_column,
         load_ts_column=spec.load_ts_column,
         asset_key=dg.AssetKey([model.vault_name, SAT_KIND, table]),

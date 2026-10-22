@@ -16,11 +16,15 @@ attributes:
       pipeline_name: example_order
   hubs:
     - name: store
-      source: example_store
       business_keys: [store_id]
+      sources:
+        - name: example_store
+          columns: {store_id: store_id}
     - name: order
-      source: example_order
       business_keys: [order_id]
+      sources:
+        - name: example_order
+          columns: {order_id: order_id}
   links:
     - name: store_order
       relationships:

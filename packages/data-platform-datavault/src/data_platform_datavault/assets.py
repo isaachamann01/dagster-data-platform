@@ -82,18 +82,23 @@ def build_hub_asset(
     model: DataVaultModel, hub: ResolvedHub, keys: dict[str, str]
 ) -> dg.AssetsDefinition:
     spec = model.specification
+    source_names = [source_mapping.source.name for source_mapping in hub.sources]
+    source_columns = {
+        source_mapping.source.name: dict(source_mapping.columns) for source_mapping in hub.sources
+    }
 
     @dg.asset(
         key=hub.asset_key,
         group_name=model.vault_name,
         kinds={"spark", "delta", "datavault"},
-        deps=[hub.source.asset_key],
+        deps=[*hub.source_asset_keys],
         required_resource_keys={keys["spark"], keys["lakehouse"], keys["metadata"]},
         io_manager_key=keys["io_manager"],
         metadata={
             **_vault_metadata(model, hub.table, [hub.hash_key]),
             "datavault/kind": "hub",
-            "datavault/source": hub.source.name,
+            "datavault/sources": source_names,
+            "datavault/source_columns": source_columns,
             "datavault/business_keys": list(hub.business_keys),
             "datavault/hash_key": hub.hash_key,
         },
@@ -105,29 +110,52 @@ def build_hub_asset(
         metadata_resource = getattr(context.resources, keys["metadata"])
         lakehouse.configure_spark(spark)
 
-        frame = read_source_table(spark, lakehouse, hub.source)
-        _require_columns(frame, hub.business_keys, hub.table)
-
-        result = (
-            frame.select(
-                _hash_column(hub.hash, alias=hub.hash_key),
-                *[F.col(column).alias(column) for column in hub.business_keys],
+        frames = []
+        for priority, hub_source in enumerate(hub.sources):
+            frame = read_source_table(spark, lakehouse, hub_source.source)
+            _require_columns(frame, hub_source.physical_columns, hub.table)
+            frames.append(
+                frame.select(
+                    *[
+                        F.col(physical).alias(canonical)
+                        for canonical, physical in hub_source.columns
+                    ],
+                    F.lit(hub_source.source.record_source).alias(spec.record_source_column_name),
+                    F.lit(priority).alias("__source_priority"),
+                )
             )
-            .withColumn(spec.load_timestamp_column_name, F.lit(_now()))
-            .withColumn(spec.record_source_column_name, F.lit(hub.source.record_source))
-            .dropDuplicates([hub.hash_key])
+        unioned = frames[0]
+        for extra in frames[1:]:
+            unioned = unioned.unionByName(extra)
+
+        keyed = unioned.select(
+            _hash_column(hub.hash, alias=hub.hash_key),
+            *[F.col(column) for column in hub.business_keys],
+            F.col("__source_priority"),
+            F.col(spec.record_source_column_name),
+        )
+        window = Window.partitionBy(hub.hash_key).orderBy(F.col("__source_priority"))
+        deduped = keyed.withColumn("__source_row", F.row_number().over(window)).where(
+            F.col("__source_row") == 1
+        )
+        result = deduped.select(
+            hub.hash_key,
+            *hub.business_keys,
+            F.lit(_now()).alias(spec.load_timestamp_column_name),
+            F.col(spec.record_source_column_name),
         )
         context.add_output_metadata(
             {
                 "datavault/kind": "hub",
-                "datavault/source": hub.source.name,
+                "datavault/sources": source_names,
+                "datavault/source_columns": source_columns,
                 "datavault/business_keys": list(hub.business_keys),
                 "datavault/hash_key": hub.hash_key,
             }
         )
         metadata_resource.record(
             "vault_hub_loaded",
-            {"vault": model.vault_name, "table": hub.table, "source": hub.source.name},
+            {"vault": model.vault_name, "table": hub.table, "sources": source_names},
         )
         return result
 
@@ -264,14 +292,29 @@ def build_satellite_asset(
         lakehouse.configure_spark(spark)
 
         frame = read_source_table(spark, lakehouse, satellite.source)
-        _require_columns(frame, satellite.parent_columns, satellite.table)
-        _require_columns(frame, satellite.attributes, satellite.table)
+        required = [
+            *[physical for _, physical in satellite.parent_source_columns],
+            *[physical for _, physical in satellite.attribute_source_columns],
+        ]
+        if satellite.load_ts_column:
+            required.append(satellite.load_ts_column)
+        _require_columns(frame, required, satellite.table)
 
-        load_ts = (
-            F.to_timestamp(F.col(satellite.load_ts_column))
-            if satellite.load_ts_column
-            else F.lit(_now())
-        )
+        projections = [
+            *[
+                F.col(physical).alias(canonical)
+                for canonical, physical in satellite.parent_source_columns
+            ],
+            *[
+                F.col(physical).alias(canonical)
+                for canonical, physical in satellite.attribute_source_columns
+            ],
+        ]
+        if satellite.load_ts_column:
+            projections.append(F.col(satellite.load_ts_column).alias("__load_ts"))
+        frame = frame.select(*projections)
+
+        load_ts = F.to_timestamp(F.col("__load_ts")) if satellite.load_ts_column else F.lit(_now())
         result = frame.select(
             _hash_column(satellite.parent_hash, alias=satellite.parent_hash_key),
             load_ts.alias(spec.load_timestamp_column_name),
@@ -281,13 +324,14 @@ def build_satellite_asset(
                 normalize=spec.normalize_key_values,
             ).alias(satellite.hashdiff_column),
             F.lit(satellite.source.record_source).alias(spec.record_source_column_name),
-            *[F.col(attribute).alias(attribute) for attribute in satellite.attributes],
+            *[F.col(attribute) for attribute in satellite.attributes],
         ).dropDuplicates([satellite.parent_hash_key, satellite.hashdiff_column])
         context.add_output_metadata(
             {
                 "datavault/kind": "satellite",
                 "datavault/source": satellite.source.name,
                 "datavault/parent": f"{satellite.parent_kind}:{satellite.parent_name}",
+                "datavault/parent_source_columns": dict(satellite.parent_source_columns),
                 "datavault/attributes": list(satellite.attributes),
                 "datavault/hashdiff": satellite.hashdiff_column,
             }

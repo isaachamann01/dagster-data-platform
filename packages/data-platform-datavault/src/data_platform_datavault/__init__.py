@@ -4,9 +4,9 @@ from data_platform_datavault.config import (
     DataVaultModelSpec,
     HubSpec,
     LinkRelationship,
-    LinkSourceSpec,
     LinkSpec,
     SatelliteSpec,
+    SourceMappingSpec,
     VaultSourceSpec,
 )
 from data_platform_datavault.hashing import (
@@ -25,9 +25,9 @@ __all__ = [
     "DataVaultModelSpec",
     "HubSpec",
     "LinkRelationship",
-    "LinkSourceSpec",
     "LinkSpec",
     "SatelliteSpec",
+    "SourceMappingSpec",
     "VaultSourceSpec",
     "build_model",
     "hash_expression",

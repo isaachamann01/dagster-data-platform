@@ -13,11 +13,15 @@ attributes:
       pipeline_name: tiny_order
   hubs:
     - name: store
-      source: tiny_store
       business_keys: [store_id]
+      sources:
+        - name: tiny_store
+          columns: {store_id: store_id}
     - name: order
-      source: tiny_order
       business_keys: [order_id]
+      sources:
+        - name: tiny_order
+          columns: {order_id: order_id}
   links:
     - name: store_order
       relationships:

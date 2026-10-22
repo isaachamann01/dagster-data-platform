@@ -13,8 +13,10 @@ satellites) and generates one Delta-backed Dagster asset per table. Loadable fro
           pipeline_name: example_store
       hubs:
         - name: store
-          source: example_store
           business_keys: [store_id]
+          sources:
+            - name: example_store
+              columns: {store_id: store_id}
       links:
         - name: store_order
           relationships:
