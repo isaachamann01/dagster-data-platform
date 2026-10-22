@@ -501,15 +501,10 @@ def _resolve_satellite(
     parent_mapping = parent.sources[0]
     source = parent_mapping.source
     available = set(source.contract.column_names)
-
-    if isinstance(parent, ResolvedHub):
-        parent_kind = HUB_KIND
-        parent_columns = parent.business_keys
-    else:
-        parent_kind = LINK_KIND
-        parent_columns = parent.hash.columns
-
+    parent_kind = HUB_KIND if isinstance(parent, ResolvedHub) else LINK_KIND
     parent_source_columns = parent_mapping.columns
+    parent_columns = [canonical for canonical, _ in parent_source_columns]
+
     for canonical, physical in parent_source_columns:
         if physical not in available:
             raise ContractError(
@@ -517,20 +512,13 @@ def _resolve_satellite(
                 f"'{physical}' (for '{canonical}') needed to compute '{parent.hash_key}'"
             )
 
-    attributes = list(spec.attributes)
+    attributes = list(spec.attributes) or list(spec.columns)
     columns = dict(spec.columns)
     parent_physical = {physical for _, physical in parent_source_columns}
-    if not attributes and columns:
-        attributes = list(columns)
-    if columns:
-        missing = [attribute for attribute in attributes if attribute not in columns]
-        if missing:
-            raise ContractError(
-                f"satellite '{spec.name}': columns is missing mappings for {missing}"
-            )
-        extra = [attribute for attribute in columns if attribute not in attributes]
-        if extra:
-            raise ContractError(f"satellite '{spec.name}': columns maps unknown attributes {extra}")
+    if columns and set(columns) != set(attributes):
+        raise ContractError(
+            f"satellite '{spec.name}': columns must map exactly {attributes}, got {list(columns)}"
+        )
     if not attributes:
         excluded = set(parent_columns) | parent_physical | set(source.contract.primary_key_columns)
         attributes = [
@@ -632,15 +620,7 @@ def build_model(spec: DataVaultModelSpec, registry: ContractRegistry) -> DataVau
 
 
 __all__ = [
-    "ContractError",
-    "ContractRegistry",
-    "DataContract",
-    "DataVaultModel",
-    "DataVaultModelSpec",
     "DeltaTableWriter",
-    "HubSpec",
-    "LinkRelationship",
-    "LinkSpec",
     "META_LAYER",
     "META_MERGE_KEYS",
     "META_PARTITION_BY",
@@ -648,11 +628,6 @@ __all__ = [
     "META_TABLE",
     "META_UPDATE_MATCHED",
     "META_WRITE_MODE",
-    "METADATA_COLUMN_PREFIX",
-    "SatelliteSpec",
-    "SourceMappingSpec",
-    "VaultSourceSpec",
-    "build_model",
     "build_trusted_prefixes",
     "parse_contract_document",
 ]

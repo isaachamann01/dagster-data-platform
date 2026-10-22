@@ -1,51 +1,7 @@
 """The DataVaultFactory Dagster component.
 
-Turns a set of silver contracts into a Data Vault 2.0 model (hubs, links,
-satellites) and generates one Delta-backed Dagster asset per table. Loadable from
-``defs.yaml`` as::
-
-    type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
-    attributes:
-      vault_name: retail
-      sources:
-        - name: example_store
-          contract: data_contracts.get_example_store_silver_contract_path
-          pipeline_name: example_store
-      hubs:
-        - name: store
-          business_keys: [store_id]
-          sources:
-            - name: example_store
-              columns: {store_id: store_id}
-      links:
-        - name: store_order
-          relationships:
-            - {hub: order, columns: [order_id]}
-            - {hub: store, columns: [store_id]}
-          sources:
-            - name: example_order
-              columns: {order_id: order_id, store_id: store_id}
-      satellites:
-        - name: store_profile
-          parent: store
-          attributes: [store_name, region, event_date]
-          load_ts_column: created_at
-
-Links define a canonical key schema in ``relationships`` and map it onto one or
-more physical tables in ``sources``. Every source maps every canonical column;
-the rows are unioned and deduplicated by the link hash, with the first declared
-source winning duplicate key combinations::
-
-      links:
-        - name: store_order
-          relationships:
-            - {hub: order, columns: [order_id]}
-            - {hub: store, columns: [store_id]}
-          sources:
-            - name: example_order
-              columns: {order_id: order_id, store_id: store_id}
-            - name: example_order_archive
-              columns: {order_id: order_ref, store_id: store_code}
+Loads Data Vault specs from ``defs.yaml`` and generates Delta-backed assets for
+hubs, links, and satellites. See the package README for the YAML reference.
 """
 
 from datetime import UTC, datetime

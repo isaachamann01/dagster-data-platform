@@ -556,7 +556,7 @@ Spark 4.2.0, Delta 4.4.0):
 | `ruff check .` | all checks passed |
 | `mypy` (root config, all five `src/` trees) | no issues in 50 source files |
 | `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
-| `pytest tests/smoke -m smoke` | 11 passed in 348.23s (Spark/Delta end-to-end, medallion + vault) |
+| `pytest tests/smoke -m smoke` | 11 passed in 336.90s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |
 | `docker build -f docker/Dockerfile.dagster ...` | image built |
