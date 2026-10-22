@@ -4,7 +4,6 @@
 type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: tiny_retail
-  hash_algorithm: md5
   sources:
     - name: tiny_store
       contract: test_project.contracts.get_tiny_store_silver_contract_path

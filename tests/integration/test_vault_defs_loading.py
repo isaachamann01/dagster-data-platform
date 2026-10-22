@@ -23,14 +23,6 @@ def _deps(definition: dg.Definitions, key_string: str) -> set[str]:
     raise AssertionError(f"asset {key_string} not found")
 
 
-def _check_specs(definition: dg.Definitions) -> list[tuple[str, str]]:
-    specs: list[tuple[str, str]] = []
-    for checks in definition.asset_checks or []:
-        for spec in getattr(checks, "check_specs", []) or []:
-            specs.append((spec.asset_key.to_user_string(), spec.name))
-    return specs
-
-
 def _asset_metadata(definition: dg.Definitions, key_string: str) -> dict:
     for assets in definition.assets or []:
         if not isinstance(assets, dg.AssetsDefinition):
@@ -62,19 +54,6 @@ def test_vault_lineage_points_at_silver_and_parents(example_defs: dg.Definitions
     } <= link_deps
     satellite_deps = _deps(example_defs, "retail/sat/sat_store_profile")
     assert {"example_store/silver/example_store", "retail/hub/hub_store"} <= satellite_deps
-
-
-def test_vault_checks_are_generated(example_defs: dg.Definitions) -> None:
-    specs = _check_specs(example_defs)
-    for expected in (
-        ("retail/hub/hub_store", "hash_key_unique"),
-        ("retail/hub/hub_store", "business_keys_not_null"),
-        ("retail/link/lnk_store_order", "hub_reference__store"),
-        ("retail/link/lnk_store_order", "hub_reference__order"),
-        ("retail/sat/sat_store_profile", "parent_key_exists"),
-        ("retail/sat/sat_order_details", "parent_hashdiff_unique"),
-    ):
-        assert expected in specs, expected
 
 
 def test_explicit_satellite_metadata(example_defs: dg.Definitions) -> None:

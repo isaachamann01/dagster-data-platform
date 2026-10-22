@@ -1,7 +1,7 @@
 # data-platform-datavault
 
 Standalone Data Vault 2.0 package for Dagster: hubs, links, satellites, hashing,
-generated asset checks, and the `DataVaultFactory` component.
+and the `DataVaultFactory` component.
 
 ## Install
 

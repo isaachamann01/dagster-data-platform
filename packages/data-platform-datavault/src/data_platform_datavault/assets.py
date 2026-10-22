@@ -49,7 +49,6 @@ def read_source_table(spark: Any, lakehouse: Any, source: ResolvedSource) -> Dat
 def _hash_column(config: HashConfig, *, alias: str) -> F.Column:
     return hash_expression(
         config.columns,
-        algorithm=config.algorithm,
         delimiter=config.delimiter,
         prefix=config.prefix,
         normalize=config.normalize,
@@ -254,7 +253,6 @@ def build_satellite_asset(
             load_ts.alias(spec.load_timestamp_column_name),
             hash_expression(
                 satellite.attributes,
-                algorithm=spec.hash_algorithm,
                 delimiter=spec.hash_delimiter,
                 normalize=spec.normalize_key_values,
             ).alias(satellite.hashdiff_column),

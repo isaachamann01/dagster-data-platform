@@ -1,4 +1,4 @@
-"""Data Vault 2.0: hashing, specs, resolved model, assets, checks, and component."""
+"""Data Vault 2.0: hashing, specs, resolved model, assets, and component."""
 
 from data_platform_datavault.config import (
     DataVaultModelSpec,

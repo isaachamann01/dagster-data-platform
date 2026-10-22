@@ -1,8 +1,8 @@
 """The DataVaultFactory Dagster component.
 
 Turns a set of silver contracts into a Data Vault 2.0 model (hubs, links,
-satellites) and generates one Delta-backed Dagster asset plus its checks per
-table. Loadable from ``defs.yaml`` as::
+satellites) and generates one Delta-backed Dagster asset per table. Loadable from
+``defs.yaml`` as::
 
     type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
     attributes:
@@ -44,13 +44,12 @@ from dagster.components import Component, ComponentLoadContext
 
 from data_platform_datavault._common import ContractRegistry, build_trusted_prefixes
 from data_platform_datavault.assets import build_vault_assets
-from data_platform_datavault.checks import build_vault_checks
 from data_platform_datavault.config import DataVaultModelSpec
 from data_platform_datavault.model import build_model
 
 
 class DataVaultFactory(Component, DataVaultModelSpec):
-    """Generate Data Vault 2.0 assets and checks from silver contracts."""
+    """Generate Data Vault 2.0 assets from silver contracts."""
 
     def _resource_keys(self) -> dict[str, str]:
         return {
@@ -70,10 +69,7 @@ class DataVaultFactory(Component, DataVaultModelSpec):
 
         model = build_model(self, registry)
         keys = self._resource_keys()
-        return dg.Definitions(
-            assets=build_vault_assets(model, keys),
-            asset_checks=build_vault_checks(model, keys),
-        )
+        return dg.Definitions(assets=build_vault_assets(model, keys))
 
 
 __all__ = ["DataVaultFactory"]

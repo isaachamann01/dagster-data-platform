@@ -33,21 +33,6 @@ def test_definitions_load_with_expected_assets() -> None:
     }
 
 
-def test_vault_assets_and_checks_are_generated() -> None:
-    defs = dg.load_from_defs_folder(path_within_project=Path(__file__))
-
-    check_names = {
-        spec.name
-        for checks in defs.asset_checks or []
-        for spec in checks.check_specs
-        if isinstance(spec, dg.AssetCheckSpec)
-    }
-    assert "hash_key_unique" in check_names
-    assert "hub_reference__store" in check_names
-    assert "parent_key_exists" in check_names
-    assert "parent_hashdiff_unique" in check_names
-
-
 def test_asset_checks_are_contract_derived() -> None:
     defs = dg.load_from_defs_folder(path_within_project=Path(__file__))
 

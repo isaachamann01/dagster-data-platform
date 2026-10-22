@@ -110,7 +110,6 @@ class DataVaultModelSpec(BaseSpec):
     hubs: list[HubSpec] = Field(default_factory=list)
     links: list[LinkSpec] = Field(default_factory=list)
     satellites: list[SatelliteSpec] = Field(default_factory=list)
-    hash_algorithm: Literal["md5", "sha256"] = "md5"
     hash_delimiter: str = "||"
     normalize_key_values: bool = True
     layer: str = "vault"

@@ -97,9 +97,8 @@ def test_explicit_model_resolution_defaults() -> None:
     assert model.satellites["profile"].parent_asset_key == model.hubs["store"].asset_key
 
 
-def test_hash_prefix_and_algorithm_are_carried_into_hash_config() -> None:
+def test_hash_prefix_is_carried_into_hash_config() -> None:
     spec = base_spec(
-        hash_algorithm="sha256",
         hubs=[
             HubSpec(
                 name="store",
@@ -110,9 +109,7 @@ def test_hash_prefix_and_algorithm_are_carried_into_hash_config() -> None:
         ],
     )
     model = build_model(spec, registry())
-    hub = model.hubs["store"]
-    assert hub.hash.algorithm == "sha256"
-    assert hub.hash.prefix == "HUB_STORE"
+    assert model.hubs["store"].hash.prefix == "HUB_STORE"
 
 
 def test_unknown_source_rejected() -> None:

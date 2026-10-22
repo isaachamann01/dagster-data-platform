@@ -24,7 +24,6 @@ from data_platform_datavault.config import (
     SatelliteSpec,
     VaultSourceSpec,
 )
-from data_platform_datavault.hashing import HashAlgorithm
 
 HUB_KIND = "hub"
 LINK_KIND = "link"
@@ -33,10 +32,9 @@ SAT_KIND = "sat"
 
 @dataclass(frozen=True)
 class HashConfig:
-    """How one hash key / hashdiff is computed."""
+    """How one MD5 hash key / hashdiff is computed."""
 
     columns: tuple[str, ...]
-    algorithm: HashAlgorithm
     delimiter: str
     prefix: str | None
     normalize: bool
@@ -160,7 +158,6 @@ def _hash_config(
 
     return HashConfig(
         columns=tuple(columns),
-        algorithm=model.hash_algorithm,
         delimiter=model.hash_delimiter,
         prefix=prefix,
         normalize=model.normalize_key_values,

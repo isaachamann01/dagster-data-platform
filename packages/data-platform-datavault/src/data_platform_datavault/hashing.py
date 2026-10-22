@@ -1,4 +1,4 @@
-"""Deterministic hash keys and hashdiffs for Data Vault 2.0 tables.
+"""Deterministic MD5 hash keys and hashdiffs for Data Vault 2.0 tables.
 
 The same payload rules are implemented twice on purpose:
 
@@ -6,7 +6,8 @@ The same payload rules are implemented twice on purpose:
 - :func:`hash_value` reproduces it in pure Python for tests and tooling.
 
 Values are normalized (trimmed + uppercased) unless disabled, and nulls hash
-as the Data Vault placeholder ``^^``. Keep the two implementations in sync.
+as the Data Vault placeholder ``^^``. MD5 is used unconditionally to keep the
+vault model simple. Keep the two implementations in sync.
 """
 
 from __future__ import annotations
@@ -15,11 +16,10 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 
 from pyspark.sql import functions as F
 
-HashAlgorithm = Literal["md5", "sha256"]
 NULL_PLACEHOLDER = "^^"
 
 
@@ -56,29 +56,22 @@ def hash_payload(
 def hash_value(
     values: Sequence[Any],
     *,
-    algorithm: HashAlgorithm = "md5",
     delimiter: str = "||",
     prefix: str | None = None,
     normalize: bool = True,
 ) -> str:
     payload = hash_payload(values, delimiter=delimiter, prefix=prefix, normalize=normalize)
-    digest = (
-        hashlib.md5(payload.encode("utf-8"))
-        if algorithm == "md5"
-        else hashlib.sha256(payload.encode("utf-8"))
-    )
-    return digest.hexdigest().upper()
+    return hashlib.md5(payload.encode("utf-8")).hexdigest().upper()
 
 
 def hash_expression(
     columns: Sequence[str],
     *,
-    algorithm: HashAlgorithm = "md5",
     delimiter: str = "||",
     prefix: str | None = None,
     normalize: bool = True,
 ) -> F.Column:
-    """Spark expression computing the hash key/hashdiff for ``columns``."""
+    """Spark expression computing the MD5 hash key/hashdiff for ``columns``."""
 
     parts: list[F.Column] = []
     for column in columns:
@@ -88,15 +81,13 @@ def hash_expression(
         parts.append(F.coalesce(source, F.lit(NULL_PLACEHOLDER)))
     payload_parts = ([F.lit(prefix)] if prefix is not None else []) + parts
     payload = F.concat_ws(delimiter, *payload_parts)
-    digest = F.md5(payload) if algorithm == "md5" else F.sha2(payload, 256)
-    return F.upper(digest)
+    return F.upper(F.md5(payload))
 
 
 def hash_values_by_column(
     row: Mapping[str, Any],
     columns: Sequence[str],
     *,
-    algorithm: HashAlgorithm = "md5",
     delimiter: str = "||",
     prefix: str | None = None,
     normalize: bool = True,
@@ -105,7 +96,6 @@ def hash_values_by_column(
 
     return hash_value(
         [row.get(column) for column in columns],
-        algorithm=algorithm,
         delimiter=delimiter,
         prefix=prefix,
         normalize=normalize,

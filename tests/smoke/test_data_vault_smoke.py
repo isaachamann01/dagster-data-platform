@@ -2,7 +2,7 @@
 
 Builds hubs, links, and satellites from the silver layer through a real Spark
 session and Delta tables, then verifies hash determinism, referential
-integrity, attribute fidelity, and the generated vault checks.
+integrity, and attribute fidelity.
 """
 
 from __future__ import annotations
@@ -125,31 +125,3 @@ def test_link_and_satellites_are_referentially_consistent(
     )
     assert mined.where(F.col("sat_name") != F.col("source_name")).count() == 0
     assert mined.count() == satellite.count()
-
-
-def test_vault_checks_execute_in_a_real_job(
-    defs: dg.Definitions,
-    resources: dict[str, Any],
-    assets_by_key: dict[str, dg.AssetsDefinition],
-) -> None:
-    subset_keys = set(STORE_ORDER_SILVER + RETAIL_KEYS)
-    subset_assets = [assets_by_key[key] for key in subset_keys]
-    subset_checks = []
-    for checks in defs.asset_checks or []:
-        specs = list(getattr(checks, "check_specs", []) or [])
-        if specs and specs[0].asset_key.to_user_string() in subset_keys:
-            subset_checks.append(checks)
-
-    vault_defs = dg.Definitions(
-        assets=subset_assets,
-        asset_checks=subset_checks,
-        resources=resources,
-        jobs=[dg.define_asset_job("vault_checks_job", selection=dg.AssetSelection.all())],
-    )
-    result = vault_defs.get_job_def("vault_checks_job").execute_in_process(raise_on_error=True)
-    assert result.success
-
-    evaluations = result.get_asset_check_evaluations()
-    assert evaluations
-    failed = [evaluation for evaluation in evaluations if not evaluation.passed]
-    assert not failed, list(failed)

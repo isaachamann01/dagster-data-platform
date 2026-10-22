@@ -39,8 +39,7 @@ dagster_pipelines/
 │       ├── config.py                     Vault/hub/link/satellite specs
 │       ├── model.py                      Resolved hubs, links, satellites
 │       ├── assets.py                     Hub/link/satellite Delta assets
-│       ├── checks.py                     Generated vault asset checks
-│       ├── hashing.py                    Deterministic hash keys and hashdiffs
+│       ├── hashing.py                    Deterministic MD5 hash keys and hashdiffs
 │       └── components/                   DataVaultFactory component
 ├── services/synthetic-api/               FastAPI synthetic-data service
 ├── projects/example_pipelines/           Three medallion pipelines, six contracts, one vault
@@ -164,7 +163,6 @@ component with the same wiring pattern as `MedallionFactory`:
 type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: retail
-  hash_algorithm: md5
   sources:
     - name: example_store
       contract: data_contracts.get_example_store_silver_contract_path
@@ -219,9 +217,9 @@ into a single silver table first.
 
 Parameters that shape the output:
 
-- **`hash_algorithm`** (`md5`/`sha256`), **`hash_delimiter`**,
-  **`normalize_key_values`**, and per-hub/link **`hash_prefix`** control hash keys
-  and hashdiffs. Nulls hash as `^^`; values are trimmed/uppercased by default.
+- Hash keys and hashdiffs are always **MD5**; **`hash_delimiter`**,
+  **`normalize_key_values`**, and per-hub/link **`hash_prefix`** control the
+  payload. Nulls hash as `^^`; values are trimmed/uppercased by default.
 - **`load_ts_column`** uses a deterministic source timestamp instead of the run
   timestamp; **`attributes`** selects (or defaults to) the tracked payload;
   **`hashdiff_column`**, table names, and hash key names are overridable.
@@ -231,11 +229,8 @@ Parameters that shape the output:
   (`delta/update_matched: false`), so matched rows are never rewritten and every
   rerun is idempotent.
 
-Each vault table gets generated asset checks: not-empty, hash key uniqueness and
-non-nullness, business-key non-nullness, hub references from links, satellite
-parent-key existence, hashdiff non-nullness, and `(parent key, hashdiff)`
-uniqueness. Lineage wires vault assets downstream of their silver sources and of
-their parent hubs/links, so `dg.materialize` orders the graph automatically.
+Vault tables are written with insert-only merges. No asset checks are generated
+for vault assets; validation belongs to the upstream silver/gold contracts.
 
 ## Partitioning and full snapshots
 
@@ -465,7 +460,7 @@ attributes:
     - {name: store_profile, source: tiny_store, parent: store, attributes: [store_name, region]}
 ```
 
-Its tests load the definitions without Spark and assert the generated asset keys and checks.
+Its tests load the definitions without Spark and assert the generated asset keys.
 
 ### Porting the Data Vault component to another project
 
@@ -512,7 +507,7 @@ All host-package coupling is isolated in one adapter module:
 7. **Point `pipeline_name` at the pipeline that materializes each silver table.** The vault
    reads the Delta table at `<layer>/<table>` via the lakehouse resource and derives its
    source asset key as `[pipeline_name, layer, table]`.
-8. **Reload definitions.** Hubs, links, satellites, asset checks, and lineage are generated
+8. **Reload definitions.** Hubs, links, satellites, and lineage are generated
    automatically; no Python changes are required.
 
 The package also ships its own unit tests under
@@ -526,11 +521,11 @@ Spark 4.2.0, Delta 4.4.0):
 
 | Command | Result |
 | --- | --- |
-| `ruff format --check .` | 78 files already formatted |
+| `ruff format --check .` | 77 files already formatted |
 | `ruff check .` | all checks passed |
-| `mypy` (root config, all five `src/` trees) | no issues in 54 source files |
-| `pytest -m "not docker and not slow"` | 123 passed, 13 deselected |
-| `pytest tests/smoke -m smoke` | 12 passed in 391.03s (Spark/Delta end-to-end, medallion + vault) |
+| `mypy` (root config, all five `src/` trees) | no issues in 53 source files |
+| `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
+| `pytest tests/smoke -m smoke` | 11 passed in 327.62s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |
 | `docker build -f docker/Dockerfile.dagster ...` | image built |

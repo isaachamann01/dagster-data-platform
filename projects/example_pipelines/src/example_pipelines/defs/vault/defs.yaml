@@ -5,7 +5,6 @@
 type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: retail
-  hash_algorithm: md5
   hash_delimiter: "||"
   layer: vault
   sources:
