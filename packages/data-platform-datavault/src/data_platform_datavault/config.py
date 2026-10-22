@@ -187,9 +187,6 @@ class DataVaultModelSpec(BaseSpec):
             raise ValueError("the vault has no hubs, links, or satellites; declare them")
         return self
 
-    def resource_key(self, name: str, default: str) -> str:
-        return self.resource_keys.get(name, default)
-
 
 __all__ = [
     "DataVaultModelSpec",

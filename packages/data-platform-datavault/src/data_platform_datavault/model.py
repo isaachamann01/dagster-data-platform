@@ -58,10 +58,6 @@ class ResolvedSourceMapping:
     source: ResolvedSource
     columns: tuple[tuple[str, str], ...]
 
-    @property
-    def physical_columns(self) -> list[str]:
-        return [physical for _, physical in self.columns]
-
 
 @dataclass(frozen=True)
 class ResolvedHub:
@@ -114,7 +110,6 @@ class ResolvedSatellite:
     parent_name: str
     parent_kind: str
     parent_hash_key: str
-    parent_columns: tuple[str, ...]
     parent_source_columns: tuple[tuple[str, str], ...]
     parent_hash: HashConfig
     attributes: tuple[str, ...]
@@ -141,9 +136,6 @@ class DataVaultModel:
             return self.links[name]
         raise ContractError(f"satellite parent '{name}' is neither a hub nor a link")
 
-    def tables(self) -> list[ResolvedHub | ResolvedLink | ResolvedSatellite]:
-        return [*self.hubs.values(), *self.links.values(), *self.satellites.values()]
-
 
 def _resolve_source(spec: VaultSourceSpec, registry: ContractRegistry) -> ResolvedSource:
     contract = registry.resolve(spec.contract)
@@ -164,10 +156,6 @@ def _resolve_source(spec: VaultSourceSpec, registry: ContractRegistry) -> Resolv
     )
 
 
-def _source_columns(source: ResolvedSource) -> set[str]:
-    return set(source.contract.column_names)
-
-
 def _resolve_source_mappings(
     canonical_columns: list[str],
     source_specs: list[SourceMappingSpec],
@@ -179,7 +167,12 @@ def _resolve_source_mappings(
 
     resolved: list[ResolvedSourceMapping] = []
     for source_spec in source_specs:
-        source = _source_or_error(source_spec.name, sources, entity=entity)
+        source = sources.get(source_spec.name)
+        if source is None:
+            raise ContractError(
+                f"{entity} references unknown source '{source_spec.name}' "
+                f"(known: {sorted(sources)})"
+            )
         missing = [column for column in canonical_columns if column not in source_spec.columns]
         if missing:
             raise ContractError(
@@ -194,7 +187,7 @@ def _resolve_source_mappings(
             raise ContractError(
                 f"{entity}: source '{source.name}' maps multiple keys to the same column"
             )
-        available = _source_columns(source)
+        available = set(source.contract.column_names)
         for column in physical_columns:
             if column not in available:
                 raise ContractError(
@@ -221,17 +214,6 @@ def _hash_config(
         prefix=prefix,
         normalize=model.normalize_key_values,
     )
-
-
-def _source_or_error(
-    source_name: str, sources: dict[str, ResolvedSource], *, entity: str
-) -> ResolvedSource:
-    source = sources.get(source_name)
-    if source is None:
-        raise ContractError(
-            f"{entity} references unknown source '{source_name}' (known: {sorted(sources)})"
-        )
-    return source
 
 
 def _resolve_hub(
@@ -331,7 +313,7 @@ def _resolve_satellite(
         )
     parent_mapping = parent.sources[0]
     source = parent_mapping.source
-    available = _source_columns(source)
+    available = set(source.contract.column_names)
 
     if isinstance(parent, ResolvedHub):
         parent_kind = HUB_KIND
@@ -407,7 +389,6 @@ def _resolve_satellite(
         parent_name=parent.name,
         parent_kind=parent_kind,
         parent_hash_key=parent.hash_key,
-        parent_columns=tuple(parent_columns),
         parent_source_columns=parent_source_columns,
         parent_hash=parent.hash,
         attributes=tuple(attributes),
@@ -458,6 +439,6 @@ def build_model(spec: DataVaultModelSpec, registry: ContractRegistry) -> DataVau
         satellite_names.add(satellite_spec.name)
         model.satellites[satellite_spec.name] = _resolve_satellite(satellite_spec, parent, spec)
 
-    if not model.tables():
+    if not (model.hubs or model.links or model.satellites):
         raise ContractError("the vault model resolved to zero tables")
     return model

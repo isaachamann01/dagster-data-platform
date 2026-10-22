@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import date
 
-from data_platform_datavault.hashing import hash_payload, hash_value, hash_values_by_column
+from data_platform_datavault.hashing import hash_payload, hash_value
 
 
 def test_md5_matches_hashlib() -> None:
@@ -35,10 +35,3 @@ def test_booleans_and_dates_normalize_like_spark() -> None:
     assert hash_payload([True]) == "TRUE"
     assert hash_payload([False]) == "FALSE"
     assert hash_payload([date(2026, 1, 1)]) == "2026-01-01"
-
-
-def test_hash_values_by_column_uses_named_columns() -> None:
-    row = {"store_id": "store-1", "region": "emea"}
-    assert hash_values_by_column(row, ["store_id"]) == hash_value(["store-1"])
-    assert hash_values_by_column(row, ["store_id", "region"]) == hash_value(["store-1", "emea"])
-    assert hash_values_by_column(row, ["missing"]) == hash_value([None])

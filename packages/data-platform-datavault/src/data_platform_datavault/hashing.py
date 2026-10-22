@@ -13,7 +13,7 @@ vault model simple. Keep the two implementations in sync.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
@@ -82,21 +82,3 @@ def hash_expression(
     payload_parts = ([F.lit(prefix)] if prefix is not None else []) + parts
     payload = F.concat_ws(delimiter, *payload_parts)
     return F.upper(F.md5(payload))
-
-
-def hash_values_by_column(
-    row: Mapping[str, Any],
-    columns: Sequence[str],
-    *,
-    delimiter: str = "||",
-    prefix: str | None = None,
-    normalize: bool = True,
-) -> str:
-    """Hash one record using the same rules as :func:`hash_expression`."""
-
-    return hash_value(
-        [row.get(column) for column in columns],
-        delimiter=delimiter,
-        prefix=prefix,
-        normalize=normalize,
-    )
