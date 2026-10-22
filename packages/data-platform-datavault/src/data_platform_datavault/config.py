@@ -58,23 +58,39 @@ class HubSpec(BaseSpec):
 
 
 class LinkRelationship(BaseSpec):
-    """A participating hub in a link, its source contract, and key columns."""
+    """A participating hub and the canonical key columns it contributes."""
 
     hub: str
     columns: list[str] = Field(min_length=1)
-    source: str
+
+
+class LinkSourceSpec(BaseSpec):
+    """One physical source contributing rows to a link.
+
+    ``columns`` maps each canonical link column declared by the relationships to
+    the column that holds it in this source.
+    """
+
+    name: str
+    columns: dict[str, str] = Field(min_length=1)
+
+    @field_validator("name")
+    @classmethod
+    def _validate_name(cls, value: str) -> str:
+        return _check_name(value, "link source")
 
 
 class LinkSpec(BaseSpec):
     """A link: one row per distinct combination of participating hub keys.
 
-    The link has no base source of its own. Each relationship names the contract
-    that owns its key; the component loads from the first declared source that
-    contains every key column.
+    ``relationships`` defines the canonical key schema and hash order;
+    ``sources`` maps that schema onto one or more physical silver tables. Rows
+    from every source are unioned and deduplicated by the link hash.
     """
 
     name: str
     relationships: list[LinkRelationship] = Field(min_length=1)
+    sources: list[LinkSourceSpec] = Field(min_length=1)
     table: str | None = None
     hash_key: str | None = None
     hash_prefix: str | None = None
@@ -83,6 +99,13 @@ class LinkSpec(BaseSpec):
     @classmethod
     def _validate_name(cls, value: str) -> str:
         return _check_name(value, "link")
+
+    @model_validator(mode="after")
+    def _validate_source_names(self) -> LinkSpec:
+        names = [source.name for source in self.sources]
+        if len(set(names)) != len(names):
+            raise ValueError(f"link '{self.name}': duplicate source names in sources")
+        return self
 
 
 class SatelliteSpec(BaseSpec):
@@ -167,6 +190,7 @@ __all__ = [
     "DataVaultModelSpec",
     "HubSpec",
     "LinkRelationship",
+    "LinkSourceSpec",
     "LinkSpec",
     "SatelliteSpec",
     "VaultSourceSpec",

@@ -3,6 +3,8 @@
 from data_platform_datavault.config import (
     DataVaultModelSpec,
     HubSpec,
+    LinkRelationship,
+    LinkSourceSpec,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
@@ -22,6 +24,8 @@ __all__ = [
     "DataVaultModel",
     "DataVaultModelSpec",
     "HubSpec",
+    "LinkRelationship",
+    "LinkSourceSpec",
     "LinkSpec",
     "SatelliteSpec",
     "VaultSourceSpec",

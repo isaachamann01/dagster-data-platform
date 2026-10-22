@@ -26,10 +26,13 @@ attributes:
       relationships:
         - hub: order
           columns: [order_id]
-          source: example_order
         - hub: store
           columns: [store_id]
-          source: example_store
+      sources:
+        - name: example_order
+          columns:
+            order_id: order_id
+            store_id: store_id
   satellites:
     - name: store_profile
       source: example_store

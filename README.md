@@ -176,8 +176,11 @@ attributes:
   links:
     - name: store_order
       relationships:
-        - {hub: order, columns: [order_id], source: example_order}
-        - {hub: store, columns: [store_id], source: example_store}
+        - {hub: order, columns: [order_id]}
+        - {hub: store, columns: [store_id]}
+      sources:
+        - name: example_order
+          columns: {order_id: order_id, store_id: store_id}
   satellites:
     - name: store_profile
       source: example_store
@@ -195,25 +198,32 @@ Generated tables (asset keys `[vault, kind, table]`, Delta layer
 | Link | `retail/link/lnk_store_order` | `lnk_store_order_hk`, `hub_order_hk`, `hub_store_hk`, `load_ts`, `record_source` |
 | Satellite | `retail/sat/sat_store_profile` | `hub_store_hk`, `load_ts`, `hashdiff`, `record_source`, tracked attributes |
 
-### Cross-contract link keys
+### Link sources and column mappings
 
-A link has no `source` of its own. Each relationship names the contract that
-owns its key columns:
+`relationships` defines the **canonical** link schema: the participating hubs
+and the key columns whose order determines the hash. `sources` maps that schema
+onto one or more physical silver tables:
 
 ```yaml
 links:
   - name: store_order
     relationships:
-      - {hub: order, columns: [order_id], source: example_order}
-      - {hub: store, columns: [store_id], source: example_store}
+      - {hub: order, columns: [order_id]}
+      - {hub: store, columns: [store_id]}
+    sources:
+      - name: order_src
+        columns: {order_id: order_id, store_id: store_id}
+      - name: invoice_src
+        columns: {order_id: invoice_order_ref, store_id: invoice_store_code}
 ```
 
-Both sources and both columns are validated at definition load. The link does
-**not** join tables: the component picks the first declared source that contains
-every key column (`example_order` here, because it has both `order_id` and
-`store_id`) and reads that one table. If no declared source contains all the
-keys, definition loading fails with an error telling you to consolidate them
-into a single silver table first.
+Each mapping is `canonical column -> physical column`. Every source must map
+every canonical column; sources that lack one need upstream consolidation. The
+link reads all listed tables, aliases them to the canonical names, unions the
+rows, and deduplicates by the link hash. If the same key combination appears in
+several sources, the **first declared source wins** (deterministic priority), so
+`record_source` is stable. Rows from all sources carry their own
+`record_source`; `load_ts` is the run timestamp. No joins are performed.
 
 Parameters that shape the output:
 
@@ -454,8 +464,11 @@ attributes:
   links:
     - name: store_order
       relationships:
-        - {hub: order, columns: [order_id], source: tiny_order}
-        - {hub: store, columns: [store_id], source: tiny_store}
+        - {hub: order, columns: [order_id]}
+        - {hub: store, columns: [store_id]}
+      sources:
+        - name: tiny_order
+          columns: {order_id: order_id, store_id: store_id}
   satellites:
     - {name: store_profile, source: tiny_store, parent: store, attributes: [store_name, region]}
 ```
@@ -524,7 +537,7 @@ Spark 4.2.0, Delta 4.4.0):
 | `ruff format --check .` | 77 files already formatted |
 | `ruff check .` | all checks passed |
 | `mypy` (root config, all five `src/` trees) | no issues in 53 source files |
-| `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
+| `pytest -m "not docker and not slow"` | 124 passed, 12 deselected |
 | `pytest tests/smoke -m smoke` | 11 passed in 327.62s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |

@@ -48,7 +48,6 @@ def test_vault_lineage_points_at_silver_and_parents(example_defs: dg.Definitions
     link_deps = _deps(example_defs, "retail/link/lnk_store_order")
     assert {
         "example_order/silver/example_order",
-        "example_store/silver/example_store",
         "retail/hub/hub_order",
         "retail/hub/hub_store",
     } <= link_deps
@@ -65,6 +64,8 @@ def test_explicit_satellite_metadata(example_defs: dg.Definitions) -> None:
 def test_link_metadata_lists_participating_hubs(example_defs: dg.Definitions) -> None:
     metadata = _asset_metadata(example_defs, "retail/link/lnk_store_order")
     assert metadata["datavault/hubs"] == ["order", "store"]
-    assert metadata["datavault/source"] == "example_order"
-    assert metadata["datavault/sources"] == ["example_order", "example_store"]
+    assert metadata["datavault/sources"] == ["example_order"]
+    assert metadata["datavault/source_columns"] == {
+        "example_order": {"order_id": "order_id", "store_id": "store_id"}
+    }
     assert metadata["datavault/hash_key"] == "lnk_store_order_hk"

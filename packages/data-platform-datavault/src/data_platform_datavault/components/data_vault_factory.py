@@ -18,8 +18,11 @@ satellites) and generates one Delta-backed Dagster asset per table. Loadable fro
       links:
         - name: store_order
           relationships:
-            - {hub: order, columns: [order_id], source: example_order}
-            - {hub: store, columns: [store_id], source: example_store}
+            - {hub: order, columns: [order_id]}
+            - {hub: store, columns: [store_id]}
+          sources:
+            - name: example_order
+              columns: {order_id: order_id, store_id: store_id}
       satellites:
         - name: store_profile
           source: example_store
@@ -27,14 +30,21 @@ satellites) and generates one Delta-backed Dagster asset per table. Loadable fro
           attributes: [store_name, region, event_date]
           load_ts_column: created_at
 
-Links declare a source per relationship and no base source of their own. The
-component loads from the first declared source that contains every key column::
+Links define a canonical key schema in ``relationships`` and map it onto one or
+more physical tables in ``sources``. Every source maps every canonical column;
+the rows are unioned and deduplicated by the link hash, with the first declared
+source winning duplicate key combinations::
 
       links:
         - name: store_order
           relationships:
-            - {hub: order, columns: [order_id], source: example_order}
-            - {hub: store, columns: [store_id], source: example_store}
+            - {hub: order, columns: [order_id]}
+            - {hub: store, columns: [store_id]}
+          sources:
+            - name: example_order
+              columns: {order_id: order_id, store_id: store_id}
+            - name: example_order_archive
+              columns: {order_id: order_ref, store_id: store_code}
 """
 
 from __future__ import annotations

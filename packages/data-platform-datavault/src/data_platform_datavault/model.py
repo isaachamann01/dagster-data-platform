@@ -62,10 +62,21 @@ class ResolvedHub:
 
 
 @dataclass(frozen=True)
+class ResolvedLinkSource:
+    """A physical source and its canonical-to-physical column mapping."""
+
+    source: ResolvedSource
+    columns: tuple[tuple[str, str], ...]
+
+    @property
+    def physical_columns(self) -> list[str]:
+        return [physical for _, physical in self.columns]
+
+
+@dataclass(frozen=True)
 class ResolvedLinkRelationship:
     hub_name: str
     hub_hash_key: str
-    source: ResolvedSource
     columns: tuple[str, ...]
     hub_hash: HashConfig
     parent_asset_key: dg.AssetKey
@@ -76,8 +87,7 @@ class ResolvedLink:
     name: str
     table: str
     hash_key: str
-    source: ResolvedSource
-    sources: tuple[ResolvedSource, ...]
+    sources: tuple[ResolvedLinkSource, ...]
     relationships: tuple[ResolvedLinkRelationship, ...]
     hash: HashConfig
     asset_key: dg.AssetKey
@@ -88,7 +98,7 @@ class ResolvedLink:
 
     @property
     def source_asset_keys(self) -> list[dg.AssetKey]:
-        return [source.asset_key for source in self.sources]
+        return [link_source.source.asset_key for link_source in self.sources]
 
 
 @dataclass(frozen=True)
@@ -204,7 +214,7 @@ def _resolve_link(
     model: DataVaultModelSpec,
 ) -> ResolvedLink:
     resolved_relationships: list[ResolvedLinkRelationship] = []
-    used_sources: dict[str, ResolvedSource] = {}
+    key_columns: list[str] = []
     seen_hubs: set[str] = set()
 
     for relationship in spec.relationships:
@@ -217,30 +227,16 @@ def _resolve_link(
             raise ContractError(f"link '{spec.name}': hub '{hub.name}' participates more than once")
         seen_hubs.add(hub.name)
 
-        relationship_source = _source_or_error(
-            relationship.source,
-            sources,
-            entity=f"link '{spec.name}' relationship to hub '{hub.name}'",
-        )
-        used_sources.setdefault(relationship_source.name, relationship_source)
-
         if len(relationship.columns) != len(hub.business_keys):
             raise ContractError(
                 f"link '{spec.name}': relationship to hub '{hub.name}' expects "
                 f"{len(hub.business_keys)} column(s) ({list(hub.business_keys)}), got "
                 f"{list(relationship.columns)}"
             )
-        for column in relationship.columns:
-            if column not in _source_columns(relationship_source):
-                raise ContractError(
-                    f"link '{spec.name}': column '{column}' is not a column of source "
-                    f"'{relationship_source.name}' (contract '{relationship_source.contract.name}')"
-                )
         resolved_relationships.append(
             ResolvedLinkRelationship(
                 hub_name=hub.name,
                 hub_hash_key=hub.hash_key,
-                source=relationship_source,
                 columns=tuple(relationship.columns),
                 # Hash the relationship's own columns with the hub's rules: the
                 # columns may be named differently from the hub business keys
@@ -249,29 +245,51 @@ def _resolve_link(
                 parent_asset_key=hub.asset_key,
             )
         )
+        key_columns.extend(relationship.columns)
 
-    key_columns = [
-        column for relationship in resolved_relationships for column in relationship.columns
-    ]
-    candidates = [
-        candidate
-        for candidate in used_sources.values()
-        if all(column in _source_columns(candidate) for column in key_columns)
-    ]
-    if not candidates:
-        raise ContractError(
-            f"link '{spec.name}': no declared source contains all key columns {key_columns}; "
-            "consolidate the keys into one silver table or declare a source that exposes them"
+    duplicates = sorted({column for column in key_columns if key_columns.count(column) > 1})
+    if duplicates:
+        raise ContractError(f"link '{spec.name}': duplicate link columns {duplicates}")
+
+    resolved_sources: list[ResolvedLinkSource] = []
+    for source_spec in spec.sources:
+        source = _source_or_error(source_spec.name, sources, entity=f"link '{spec.name}' source")
+        missing = [column for column in key_columns if column not in source_spec.columns]
+        if missing:
+            raise ContractError(
+                f"link '{spec.name}': source '{source.name}' is missing mappings for {missing}"
+            )
+        extra = [column for column in source_spec.columns if column not in key_columns]
+        if extra:
+            raise ContractError(
+                f"link '{spec.name}': source '{source.name}' maps unknown link columns {extra}"
+            )
+
+        physical_columns = [source_spec.columns[column] for column in key_columns]
+        if len(set(physical_columns)) != len(physical_columns):
+            raise ContractError(
+                f"link '{spec.name}': source '{source.name}' maps multiple keys to the same column"
+            )
+        available = _source_columns(source)
+        for column in physical_columns:
+            if column not in available:
+                raise ContractError(
+                    f"link '{spec.name}': source '{source.name}' has no column '{column}' "
+                    f"(contract '{source.contract.name}')"
+                )
+        resolved_sources.append(
+            ResolvedLinkSource(
+                source=source,
+                columns=tuple(zip(key_columns, physical_columns, strict=True)),
+            )
         )
-    source = candidates[0]
 
     table = spec.table or f"lnk_{spec.name}"
     return ResolvedLink(
         name=spec.name,
         table=table,
         hash_key=spec.hash_key or f"{table}_hk",
-        source=source,
-        sources=tuple(used_sources.values()),
+        sources=tuple(resolved_sources),
         relationships=tuple(resolved_relationships),
         hash=_hash_config(key_columns, prefix=spec.hash_prefix, model=model),
         asset_key=dg.AssetKey([model.vault_name, LINK_KIND, table]),

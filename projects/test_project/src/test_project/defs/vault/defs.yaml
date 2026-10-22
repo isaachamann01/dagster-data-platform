@@ -23,10 +23,13 @@ attributes:
       relationships:
         - hub: order
           columns: [order_id]
-          source: tiny_order
         - hub: store
           columns: [store_id]
-          source: tiny_store
+      sources:
+        - name: tiny_order
+          columns:
+            order_id: order_id
+            store_id: store_id
   satellites:
     - name: store_profile
       source: tiny_store

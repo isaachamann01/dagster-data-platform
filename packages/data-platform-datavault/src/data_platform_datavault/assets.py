@@ -14,6 +14,7 @@ from typing import Any
 import dagster as dg
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+from pyspark.sql.window import Window
 
 from data_platform_datavault._common import (
     META_LAYER,
@@ -137,10 +138,10 @@ def build_link_asset(
     model: DataVaultModel, link: ResolvedLink, keys: dict[str, str]
 ) -> dg.AssetsDefinition:
     spec = model.specification
-    all_columns = tuple(
-        column for relationship in link.relationships for column in relationship.columns
-    )
-    source_names = [source.name for source in link.sources]
+    source_names = [link_source.source.name for link_source in link.sources]
+    source_columns = {
+        link_source.source.name: dict(link_source.columns) for link_source in link.sources
+    }
 
     @dg.asset(
         key=link.asset_key,
@@ -152,8 +153,8 @@ def build_link_asset(
         metadata={
             **_vault_metadata(model, link.table, [link.hash_key]),
             "datavault/kind": "link",
-            "datavault/source": link.source.name,
             "datavault/sources": source_names,
+            "datavault/source_columns": source_columns,
             "datavault/hubs": [relationship.hub_name for relationship in link.relationships],
             "datavault/hash_key": link.hash_key,
         },
@@ -168,26 +169,50 @@ def build_link_asset(
         metadata_resource = getattr(context.resources, keys["metadata"])
         lakehouse.configure_spark(spark)
 
-        frame = read_source_table(spark, lakehouse, link.source)
-        _require_columns(frame, all_columns, link.table)
-
-        result = (
-            frame.select(
-                _hash_column(link.hash, alias=link.hash_key),
-                *[
-                    _hash_column(relationship.hub_hash, alias=relationship.hub_hash_key)
-                    for relationship in link.relationships
-                ],
+        frames = []
+        for priority, link_source in enumerate(link.sources):
+            frame = read_source_table(spark, lakehouse, link_source.source)
+            _require_columns(frame, link_source.physical_columns, link.table)
+            frames.append(
+                frame.select(
+                    *[
+                        F.col(physical).alias(canonical)
+                        for canonical, physical in link_source.columns
+                    ],
+                    F.lit(link_source.source.record_source).alias(spec.record_source_column_name),
+                    F.lit(priority).alias("__source_priority"),
+                )
             )
-            .withColumn(spec.load_timestamp_column_name, F.lit(_now()))
-            .withColumn(spec.record_source_column_name, F.lit(link.source.record_source))
-            .dropDuplicates([link.hash_key])
+        unioned = frames[0]
+        for extra in frames[1:]:
+            unioned = unioned.unionByName(extra)
+
+        keyed = unioned.select(
+            _hash_column(link.hash, alias=link.hash_key),
+            *[
+                _hash_column(relationship.hub_hash, alias=relationship.hub_hash_key)
+                for relationship in link.relationships
+            ],
+            F.col("__source_priority"),
+            F.col(spec.record_source_column_name),
+        )
+        # Deterministic dedupe: the first declared source wins for duplicate
+        # key combinations.
+        window = Window.partitionBy(link.hash_key).orderBy(F.col("__source_priority"))
+        deduped = keyed.withColumn("__source_row", F.row_number().over(window)).where(
+            F.col("__source_row") == 1
+        )
+        result = deduped.select(
+            link.hash_key,
+            *[relationship.hub_hash_key for relationship in link.relationships],
+            F.lit(_now()).alias(spec.load_timestamp_column_name),
+            F.col(spec.record_source_column_name),
         )
         context.add_output_metadata(
             {
                 "datavault/kind": "link",
-                "datavault/source": link.source.name,
                 "datavault/sources": source_names,
+                "datavault/source_columns": source_columns,
                 "datavault/hubs": [relationship.hub_name for relationship in link.relationships],
                 "datavault/hash_key": link.hash_key,
             }
@@ -197,7 +222,6 @@ def build_link_asset(
             {
                 "vault": model.vault_name,
                 "table": link.table,
-                "source": link.source.name,
                 "sources": source_names,
             },
         )

@@ -9,6 +9,8 @@ from pydantic import ValidationError
 from data_platform_datavault import (
     DataVaultModelSpec,
     HubSpec,
+    LinkRelationship,
+    LinkSourceSpec,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
@@ -20,7 +22,6 @@ from data_platform_datavault._common import (
     parse_contract_document,
 )
 from data_platform_datavault.assets import build_vault_assets
-from data_platform_datavault.config import LinkRelationship
 
 
 def store_contract() -> dict:
@@ -86,6 +87,40 @@ def base_spec(**overrides: object) -> DataVaultModelSpec:
     return DataVaultModelSpec(**payload)
 
 
+def multi_source_link_spec() -> DataVaultModelSpec:
+    return base_spec(
+        sources=[
+            *sources(),
+            VaultSourceSpec(
+                name="order_archive_src", contract="order", pipeline_name="p_order_archive"
+            ),
+        ],
+        hubs=[
+            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
+            HubSpec(name="order", source="order_src", business_keys=["order_id"]),
+        ],
+        links=[
+            LinkSpec(
+                name="order_store",
+                relationships=[
+                    LinkRelationship(hub="order", columns=["order_id"]),
+                    LinkRelationship(hub="store", columns=["store_id"]),
+                ],
+                sources=[
+                    LinkSourceSpec(
+                        name="order_src",
+                        columns={"order_id": "order_id", "store_id": "store_id"},
+                    ),
+                    LinkSourceSpec(
+                        name="order_archive_src",
+                        columns={"order_id": "order_id", "store_id": "store_id"},
+                    ),
+                ],
+            )
+        ],
+    )
+
+
 def test_explicit_model_resolution_defaults() -> None:
     spec = base_spec(
         satellites=[SatelliteSpec(name="profile", source="store_src", parent="store")],
@@ -123,9 +158,8 @@ def test_unknown_hub_in_link_rejected() -> None:
         links=[
             LinkSpec(
                 name="bad",
-                relationships=[
-                    LinkRelationship(hub="ghost", columns=["order_id"], source="order_src")
-                ],
+                relationships=[LinkRelationship(hub="ghost", columns=["order_id"])],
+                sources=[LinkSourceSpec(name="order_src", columns={"order_id": "order_id"})],
             )
         ]
     )
@@ -139,9 +173,8 @@ def test_link_relationship_arity_must_match_hub_keys() -> None:
         links=[
             LinkSpec(
                 name="bad",
-                relationships=[
-                    LinkRelationship(hub="store", columns=["store_id"], source="order_src"),
-                ],
+                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
+                sources=[LinkSourceSpec(name="order_src", columns={"store_id": "store_id"})],
             )
         ],
     )
@@ -149,57 +182,25 @@ def test_link_relationship_arity_must_match_hub_keys() -> None:
         build_model(spec, registry())
 
 
-def test_cross_contract_link_keys_resolve_declared_sources() -> None:
-    spec = base_spec(
-        hubs=[
-            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
-            HubSpec(name="order", source="order_src", business_keys=["order_id"]),
-        ],
-        links=[
-            LinkSpec(
-                name="order_store",
-                relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"], source="order_src"),
-                    LinkRelationship(hub="store", columns=["store_id"], source="store_src"),
-                ],
-            )
-        ],
-    )
-    model = build_model(spec, registry())
-    link = model.links["order_store"]
+def test_link_sources_resolve_column_mappings() -> None:
+    link = build_model(multi_source_link_spec(), registry()).links["order_store"]
 
-    # No base source in the spec: the first source containing both keys wins.
-    assert link.source.name == "order_src"
-    assert [source.name for source in link.sources] == ["order_src", "store_src"]
-    assert [relationship.source.name for relationship in link.relationships] == [
+    assert [link_source.source.name for link_source in link.sources] == [
         "order_src",
-        "store_src",
+        "order_archive_src",
     ]
+    assert link.sources[0].columns == (("order_id", "order_id"), ("store_id", "store_id"))
+    assert link.sources[0].physical_columns == ["order_id", "store_id"]
+    assert link.hash.columns == ("order_id", "store_id")
     assert link.relationships[1].hub_hash.columns == ("store_id",)
-    assert link.relationships[1].hub_hash.prefix == model.hubs["store"].hash.prefix
     assert [key.to_user_string() for key in link.source_asset_keys] == [
         "p_order/silver/order",
-        "p_store/silver/store",
+        "p_order_archive/silver/order",
     ]
 
 
-def test_cross_contract_link_asset_dependencies() -> None:
-    spec = base_spec(
-        hubs=[
-            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
-            HubSpec(name="order", source="order_src", business_keys=["order_id"]),
-        ],
-        links=[
-            LinkSpec(
-                name="order_store",
-                relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"], source="order_src"),
-                    LinkRelationship(hub="store", columns=["store_id"], source="store_src"),
-                ],
-            )
-        ],
-    )
-    model = build_model(spec, registry())
+def test_link_asset_dependencies_and_mappings() -> None:
+    model = build_model(multi_source_link_spec(), registry())
     assets = build_vault_assets(
         model,
         {
@@ -214,20 +215,25 @@ def test_cross_contract_link_asset_dependencies() -> None:
 
     assert {dependency.to_user_string() for dependency in asset.asset_deps[key]} == {
         "p_order/silver/order",
-        "p_store/silver/store",
+        "p_order_archive/silver/order",
         "v/hub/hub_order",
         "v/hub/hub_store",
     }
-    assert asset.metadata_by_key[key]["datavault/sources"] == ["order_src", "store_src"]
-    assert asset.metadata_by_key[key]["datavault/source"] == "order_src"
+    metadata = asset.metadata_by_key[key]
+    assert metadata["datavault/sources"] == ["order_src", "order_archive_src"]
+    assert metadata["datavault/source_columns"] == {
+        "order_src": {"order_id": "order_id", "store_id": "store_id"},
+        "order_archive_src": {"order_id": "order_id", "store_id": "store_id"},
+    }
 
 
-def test_link_relationship_source_must_exist() -> None:
+def test_link_source_must_exist() -> None:
     spec = base_spec(
         links=[
             LinkSpec(
                 name="bad",
-                relationships=[LinkRelationship(hub="store", columns=["store_id"], source="nope")],
+                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
+                sources=[LinkSourceSpec(name="nope", columns={"store_id": "store_id"})],
             )
         ],
     )
@@ -235,7 +241,7 @@ def test_link_relationship_source_must_exist() -> None:
         build_model(spec, registry())
 
 
-def test_relationship_column_must_exist_in_declared_source() -> None:
+def test_mapped_column_must_exist_in_source() -> None:
     spec = base_spec(
         sources=[
             *sources(),
@@ -244,39 +250,123 @@ def test_relationship_column_must_exist_in_declared_source() -> None:
         links=[
             LinkSpec(
                 name="bad",
-                relationships=[
-                    LinkRelationship(hub="store", columns=["store_id"], source="customer_src")
-                ],
+                relationships=[LinkRelationship(hub="store", columns=["store_id"])],
+                sources=[LinkSourceSpec(name="customer_src", columns={"store_id": "store_id"})],
             )
         ],
     )
-    with pytest.raises(ContractError, match="not a column of source 'customer_src'"):
+    with pytest.raises(ContractError, match="has no column 'store_id'"):
         build_model(spec, registry())
 
 
-def test_link_requires_a_source_with_all_key_columns() -> None:
+def test_link_source_must_map_every_key_column() -> None:
     spec = base_spec(
         hubs=[
-            HubSpec(name="store", source="store_src", business_keys=["store_name"]),
+            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
             HubSpec(name="order", source="order_src", business_keys=["order_id"]),
         ],
         links=[
             LinkSpec(
                 name="bad",
                 relationships=[
-                    LinkRelationship(hub="order", columns=["order_id"], source="order_src"),
-                    LinkRelationship(hub="store", columns=["store_name"], source="store_src"),
+                    LinkRelationship(hub="order", columns=["order_id"]),
+                    LinkRelationship(hub="store", columns=["store_id"]),
+                ],
+                sources=[LinkSourceSpec(name="order_src", columns={"order_id": "order_id"})],
+            )
+        ],
+    )
+    with pytest.raises(ContractError, match=r"missing mappings for \['store_id'\]"):
+        build_model(spec, registry())
+
+
+def test_link_source_must_not_map_unknown_columns() -> None:
+    spec = base_spec(
+        hubs=[HubSpec(name="order", source="order_src", business_keys=["order_id"])],
+        links=[
+            LinkSpec(
+                name="bad",
+                relationships=[LinkRelationship(hub="order", columns=["order_id"])],
+                sources=[
+                    LinkSourceSpec(
+                        name="order_src",
+                        columns={"order_id": "order_id", "bogus": "quantity"},
+                    )
                 ],
             )
         ],
     )
-    with pytest.raises(ContractError, match="no declared source contains all key columns"):
+    with pytest.raises(ContractError, match=r"maps unknown link columns \['bogus'\]"):
         build_model(spec, registry())
 
 
-def test_link_relationship_requires_source() -> None:
+def test_link_source_must_not_map_two_keys_to_one_column() -> None:
+    spec = base_spec(
+        hubs=[
+            HubSpec(name="order", source="order_src", business_keys=["order_id"]),
+            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
+        ],
+        links=[
+            LinkSpec(
+                name="bad",
+                relationships=[
+                    LinkRelationship(hub="order", columns=["order_id"]),
+                    LinkRelationship(hub="store", columns=["store_id"]),
+                ],
+                sources=[
+                    LinkSourceSpec(
+                        name="order_src",
+                        columns={"order_id": "order_id", "store_id": "order_id"},
+                    )
+                ],
+            )
+        ],
+    )
+    with pytest.raises(ContractError, match="maps multiple keys to the same column"):
+        build_model(spec, registry())
+
+
+def test_link_duplicate_key_columns_rejected() -> None:
+    spec = base_spec(
+        hubs=[
+            HubSpec(name="order", source="order_src", business_keys=["order_id"]),
+            HubSpec(name="store", source="store_src", business_keys=["store_id"]),
+        ],
+        links=[
+            LinkSpec(
+                name="bad",
+                relationships=[
+                    LinkRelationship(hub="order", columns=["order_id"]),
+                    LinkRelationship(hub="store", columns=["order_id"]),
+                ],
+                sources=[LinkSourceSpec(name="order_src", columns={"order_id": "order_id"})],
+            )
+        ],
+    )
+    with pytest.raises(ContractError, match="duplicate link columns"):
+        build_model(spec, registry())
+
+
+def test_link_requires_sources() -> None:
     with pytest.raises(ValidationError):
-        LinkRelationship.model_validate({"hub": "order", "columns": ["order_id"]})
+        LinkSpec.model_validate(
+            {
+                "name": "bad",
+                "relationships": [{"hub": "order", "columns": ["order_id"]}],
+            }
+        )
+
+
+def test_link_duplicate_source_names_rejected() -> None:
+    with pytest.raises(ValidationError):
+        LinkSpec(
+            name="bad",
+            relationships=[LinkRelationship(hub="order", columns=["order_id"])],
+            sources=[
+                LinkSourceSpec(name="order_src", columns={"order_id": "order_id"}),
+                LinkSourceSpec(name="order_src", columns={"order_id": "order_id"}),
+            ],
+        )
 
 
 def test_unknown_satellite_parent_rejected() -> None:
