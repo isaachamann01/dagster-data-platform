@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import date
 
-from data_platform_common.datavault.hashing import hash_payload, hash_value, hash_values_by_column
+from data_platform_datavault.hashing import hash_payload, hash_value, hash_values_by_column
 
 
 def test_md5_matches_hashlib() -> None:

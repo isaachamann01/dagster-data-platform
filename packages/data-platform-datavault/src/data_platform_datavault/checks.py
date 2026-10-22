@@ -14,13 +14,13 @@ import dagster as dg
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from data_platform_common.datavault.model import (
+from data_platform_datavault._common import DeltaTableWriter
+from data_platform_datavault.model import (
     DataVaultModel,
     ResolvedHub,
     ResolvedLink,
     ResolvedSatellite,
 )
-from data_platform_common.io.delta import DeltaTableWriter
 
 CheckResult = tuple[bool, str, dict[str, Any]]
 Evaluator = Callable[[DataFrame, Any, Any], CheckResult]

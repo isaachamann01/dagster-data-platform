@@ -15,17 +15,7 @@ import dagster as dg
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from data_platform_common.datavault.hashing import hash_expression
-from data_platform_common.datavault.model import (
-    DataVaultModel,
-    HashConfig,
-    ResolvedHub,
-    ResolvedLink,
-    ResolvedSatellite,
-    ResolvedSource,
-)
-from data_platform_common.io.delta import DeltaTableWriter
-from data_platform_common.io.manager import (
+from data_platform_datavault._common import (
     META_LAYER,
     META_MERGE_KEYS,
     META_PARTITION_BY,
@@ -33,6 +23,16 @@ from data_platform_common.io.manager import (
     META_TABLE,
     META_UPDATE_MATCHED,
     META_WRITE_MODE,
+    DeltaTableWriter,
+)
+from data_platform_datavault.hashing import hash_expression
+from data_platform_datavault.model import (
+    DataVaultModel,
+    HashConfig,
+    ResolvedHub,
+    ResolvedLink,
+    ResolvedSatellite,
+    ResolvedSource,
 )
 
 

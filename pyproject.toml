@@ -14,6 +14,7 @@ line-length = 100
 target-version = "py312"
 src = [
     "packages/data-platform-common/src",
+    "packages/data-platform-datavault/src",
     "services/synthetic-api/src",
     "projects/example_pipelines/src",
     "projects/test_project/src",
@@ -28,12 +29,13 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["E501"]
+"**/tests/**/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 files = [
     "packages/data-platform-common/src",
+    "packages/data-platform-datavault/src",
     "services/synthetic-api/src",
     "projects/example_pipelines/src",
     "projects/test_project/src",
@@ -53,7 +55,7 @@ module = ["pyspark.*", "delta.*", "trino.*", "boto3", "botocore.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "projects/test_project/tests"]
+testpaths = ["tests", "packages/data-platform-datavault/tests", "projects/test_project/tests"]
 addopts = "-ra"
 markers = [
     "slow: requires a local Spark session (Java) and is skipped by default runs",

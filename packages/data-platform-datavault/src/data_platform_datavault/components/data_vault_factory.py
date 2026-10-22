@@ -4,7 +4,7 @@ Turns a set of silver contracts into a Data Vault 2.0 model (hubs, links,
 satellites) and generates one Delta-backed Dagster asset plus its checks per
 table. Loadable from ``defs.yaml`` as::
 
-    type: data_platform_common.components.data_vault_factory.DataVaultFactory
+    type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
     attributes:
       vault_name: retail
       sources:
@@ -17,10 +17,9 @@ table. Loadable from ``defs.yaml`` as::
           business_keys: [store_id]
       links:
         - name: store_order
-          source: example_order
           relationships:
-            - {hub: order, columns: [order_id]}
-            - {hub: store, columns: [store_id]}
+            - {hub: order, columns: [order_id], source: example_order}
+            - {hub: store, columns: [store_id], source: example_store}
       satellites:
         - name: store_profile
           source: example_store
@@ -43,12 +42,11 @@ from __future__ import annotations
 import dagster as dg
 from dagster.components import Component, ComponentLoadContext
 
-from data_platform_common.contracts.registry import ContractRegistry
-from data_platform_common.datavault.assets import build_vault_assets
-from data_platform_common.datavault.checks import build_vault_checks
-from data_platform_common.datavault.config import DataVaultModelSpec
-from data_platform_common.datavault.model import build_model
-from data_platform_common.imports import build_trusted_prefixes
+from data_platform_datavault._common import ContractRegistry, build_trusted_prefixes
+from data_platform_datavault.assets import build_vault_assets
+from data_platform_datavault.checks import build_vault_checks
+from data_platform_datavault.config import DataVaultModelSpec
+from data_platform_datavault.model import build_model
 
 
 class DataVaultFactory(Component, DataVaultModelSpec):

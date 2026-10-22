@@ -5,9 +5,15 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from dagster import Resolvable
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from data_platform_common.medallion.config import BaseSpec
+
+class BaseSpec(Resolvable, BaseModel):
+    """Base for vault attribute models with strict pydantic validation."""
+
+    model_config = ConfigDict(extra="forbid")
+
 
 NAME_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 

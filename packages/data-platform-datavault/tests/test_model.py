@@ -6,8 +6,7 @@ import dagster as dg
 import pytest
 from pydantic import ValidationError
 
-from data_platform_common.contracts import ContractRegistry, parse_contract_document
-from data_platform_common.datavault import (
+from data_platform_datavault import (
     DataVaultModelSpec,
     HubSpec,
     LinkSpec,
@@ -15,9 +14,13 @@ from data_platform_common.datavault import (
     VaultSourceSpec,
     build_model,
 )
-from data_platform_common.datavault.assets import build_vault_assets
-from data_platform_common.datavault.config import LinkRelationship
-from data_platform_common.errors import ContractError
+from data_platform_datavault._common import (
+    ContractError,
+    ContractRegistry,
+    parse_contract_document,
+)
+from data_platform_datavault.assets import build_vault_assets
+from data_platform_datavault.config import LinkRelationship
 
 
 def store_contract() -> dict:

@@ -17,6 +17,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install \
   -e "packages/data-platform-common[dev,s3,trino]" \
+  -e packages/data-platform-datavault \
   -e services/synthetic-api \
   -e projects/example_pipelines \
   -e projects/test_project

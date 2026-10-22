@@ -1,19 +1,19 @@
-"""Data Vault 2.0 modeling: hashing, configuration, model resolution, assets."""
+"""Data Vault 2.0: hashing, specs, resolved model, assets, checks, and component."""
 
-from data_platform_common.datavault.config import (
+from data_platform_datavault.config import (
     DataVaultModelSpec,
     HubSpec,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
 )
-from data_platform_common.datavault.hashing import (
+from data_platform_datavault.hashing import (
     hash_expression,
     hash_payload,
     hash_value,
     hash_values_by_column,
 )
-from data_platform_common.datavault.model import (
+from data_platform_datavault.model import (
     DataVaultModel,
     build_model,
 )

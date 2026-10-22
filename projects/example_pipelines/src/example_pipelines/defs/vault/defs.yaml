@@ -2,7 +2,7 @@
 #   hubs       retail/hub/hub_store, retail/hub/hub_order
 #   link       retail/link/lnk_store_order
 #   satellites retail/sat/sat_store_profile, retail/sat/sat_order_details
-type: data_platform_common.components.data_vault_factory.DataVaultFactory
+type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: retail
   hash_algorithm: md5

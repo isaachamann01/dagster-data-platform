@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "data-platform-datavault"
+version = "0.1.0"
+description = "Data Vault 2.0 assets, checks, and Dagster components"
+requires-python = ">=3.12"
+dependencies = [
+    "data-platform-common>=0.1.0",
+    "dagster>=1.13,<1.14",
+    "pydantic>=2.13,<3",
+    "pyspark>=4.0.1,<4.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "ty>=0.0.90,<0.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/data_platform_datavault"]
+
+[tool.dg]
+project.root_module = "data_platform_datavault"

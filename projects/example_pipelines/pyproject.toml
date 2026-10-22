@@ -7,7 +7,7 @@ name = "example-pipelines"
 version = "0.1.0"
 description = "Example contract-driven medallion pipelines"
 requires-python = ">=3.12"
-dependencies = ["data-platform-common"]
+dependencies = ["data-platform-common", "data-platform-datavault"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/example_pipelines", "src/data_contracts"]
@@ -20,5 +20,5 @@ project.trusted_prefixes = ["data_contracts"]
 module_name = "example_pipelines.definitions"
 registry_modules = [
     "data_platform_common.components.medallion_factory",
-    "data_platform_common.components.data_vault_factory",
+    "data_platform_datavault.components.data_vault_factory",
 ]

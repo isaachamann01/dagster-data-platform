@@ -7,7 +7,7 @@ name = "test-project"
 version = "0.1.0"
 description = "Minimal separate Dagster project proving the MedallionFactory component is reusable"
 requires-python = ">=3.12"
-dependencies = ["data-platform-common"]
+dependencies = ["data-platform-common", "data-platform-datavault"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/test_project"]

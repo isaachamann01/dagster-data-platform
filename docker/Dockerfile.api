@@ -9,11 +9,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY packages/data-platform-common /app/packages/data-platform-common
+COPY packages/data-platform-datavault /app/packages/data-platform-datavault
 COPY projects/example_pipelines /app/projects/example_pipelines
 COPY services/synthetic-api /app/services/synthetic-api
 
 RUN pip install --no-cache-dir \
         ./packages/data-platform-common \
+        ./packages/data-platform-datavault \
         ./projects/example_pipelines \
         ./services/synthetic-api
 

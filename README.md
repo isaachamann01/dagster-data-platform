@@ -20,7 +20,7 @@ YAML contracts + defs.yaml
 
 ```
 dagster_pipelines/
-├── packages/data-platform-common/        Reusable library + Dagster components
+├── packages/data-platform-common/        Platform library + MedallionFactory
 │   └── src/data_platform_common/
 │       ├── contracts/                    Pydantic contract models, loader, registry
 │       ├── synthetic/                    Deterministic generator, regex engine, graph, batch
@@ -28,16 +28,24 @@ dagster_pipelines/
 │       ├── resources/                    REST, Spark, lakehouse, Trino, metadata resources
 │       ├── io/                           Delta writer + DeltaLakeIOManager
 │       ├── medallion/                    Pipeline model and bronze/silver/gold asset builders
-│       ├── datavault/                    Hashing, model resolution, hub/link/satellite builders
-│       ├── components/                   MedallionFactory + DataVaultFactory components
+│       ├── components/                   MedallionFactory component
 │       ├── checks.py                     CheckSpec -> Dagster asset checks
 │       ├── partitions.py                 Typed partition config + key propagation
 │       ├── imports.py                    Trusted dotted-import resolution
 │       └── transformations.py            json_to_dataframe, drop_columns_not_in_contract
+├── packages/data-platform-datavault/     Standalone Data Vault 2.0 package
+│   └── src/data_platform_datavault/
+│       ├── _common.py                    Adapter: the only host-package imports
+│       ├── config.py                     Vault/hub/link/satellite specs
+│       ├── model.py                      Resolved hubs, links, satellites
+│       ├── assets.py                     Hub/link/satellite Delta assets
+│       ├── checks.py                     Generated vault asset checks
+│       ├── hashing.py                    Deterministic hash keys and hashdiffs
+│       └── components/                   DataVaultFactory component
 ├── services/synthetic-api/               FastAPI synthetic-data service
 ├── projects/example_pipelines/           Three medallion pipelines, six contracts, one vault
 ├── projects/test_project/                Minimal separate project proving reusability
-├── tests/                                Unit, integration, and smoke tests
+├── tests/                                Integration and smoke tests
 ├── docker/                               Dockerfiles + Dagster and Trino config
 ├── docker-compose.yml                    MinIO + synthetic API + Dagster (+ optional Trino)
 ├── env.example                           Every environment variable with defaults
@@ -52,8 +60,10 @@ dagster_pipelines/
   derivation, type casting, validation, Dagster asset checks, and synthetic generation.
 - **Validation is not duplicated.** A contract expands into `CheckSpec` objects that are executed
   both inline in the silver/gold assets (fail fast) and as Dagster asset checks (observability).
-- **The component is reusable.** `projects/test_project` depends only on `data_platform_common`
-  and declares a full pipeline with no Python transformations of its own.
+- **The components are reusable.** `projects/test_project` depends only on the published
+  packages and declares a full medallion pipeline and vault with no project-local framework code.
+- **Data Vault is separable.** All Data Vault code lives in `data-platform-datavault`; the only
+  coupling to the host platform is the single `_common.py` adapter module.
 - **Resources are environment-driven.** Spark, storage, REST, Trino, and metadata configuration
   come from environment variables so the same code runs locally or in Compose/CI.
 
@@ -146,11 +156,12 @@ Foreign-key checks declare `additional_deps` on the parent silver asset so order
 
 ## Data Vault 2.0 factory
 
-`DataVaultFactory` turns silver contracts into a Data Vault 2.0 model. It is a
-second reusable component with the same wiring pattern as `MedallionFactory`:
+`DataVaultFactory` turns silver contracts into a Data Vault 2.0 model. It ships in
+the standalone `data-platform-datavault` package and is a second reusable
+component with the same wiring pattern as `MedallionFactory`:
 
 ```yaml
-type: data_platform_common.components.data_vault_factory.DataVaultFactory
+type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: retail
   hash_algorithm: md5
@@ -421,8 +432,9 @@ No changes to `data_platform_common` are required, and asset keys are namespaced
 
 ## Reusability
 
-`projects/test_project` is an independent Dagster project that installs `data-platform-common`
-and declares both component types with no project-local framework code:
+`projects/test_project` is an independent Dagster project that installs the
+published packages (`data-platform-common` and `data-platform-datavault`) and
+declares both component types with no project-local framework code:
 
 ```yaml
 type: data_platform_common.components.medallion_factory.MedallionFactory
@@ -434,7 +446,7 @@ attributes:
 ```
 
 ```yaml
-type: data_platform_common.components.data_vault_factory.DataVaultFactory
+type: data_platform_datavault.components.data_vault_factory.DataVaultFactory
 attributes:
   vault_name: tiny_retail
   sources:
@@ -457,12 +469,23 @@ Its tests load the definitions without Spark and assert the generated asset keys
 
 ### Porting the Data Vault component to another project
 
-1. **Install the library** (wheel, editable checkout, or git reference):
+The Data Vault code is a **standalone package** (`packages/data-platform-datavault`).
+All host-package coupling is isolated in one adapter module:
+`src/data_platform_datavault/_common.py`.
+
+1. **Install the package** (wheel, editable checkout, or git reference):
    ```bash
-   pip install /path/to/dagster_pipelines/packages/data-platform-common
+   pip install /path/to/dagster_pipelines/packages/data-platform-datavault
    ```
-   It has no dependency on `example_pipelines`; only Dagster, pydantic, PySpark, and Delta.
-2. **Provide resources.** The vault needs `spark`, `lakehouse`, `metadata`, and `delta_io_manager`.
+   It depends on `data-platform-common` for the shared contract/IO layer, but has
+   no dependency on `example_pipelines`.
+2. **Retarget the adapter if your common package differs.** `_common.py` imports
+   the host symbols (`DataContract`, `ContractRegistry`, `parse_contract_document`,
+   `ContractError`, `build_trusted_prefixes`, `DeltaTableWriter`, the `META_*`
+   write-contract keys, and `METADATA_COLUMN_PREFIX`). Point those imports at your
+   equivalent modules — that single file is the entire porting surface. If your
+   common package uses the same module layout, only the top-level package name changes.
+3. **Provide resources.** The vault needs `spark`, `lakehouse`, `metadata`, and `delta_io_manager`.
    The simplest wiring is the shared environment builder in your `definitions.py`:
    ```python
    import dagster as dg
@@ -477,20 +500,24 @@ Its tests load the definitions without Spark and assert the generated asset keys
        )
    ```
    If your project already names resources differently, set `resource_keys` on the factory.
-3. **Describe the silver contracts** in your project (YAML) and expose path helpers, e.g.
+4. **Describe the silver contracts** in your project (YAML) and expose path helpers, e.g.
    `my_project.contracts.get_store_silver_contract_path`.
-4. **Add a `defs/<anything>/defs.yaml`** using the full component path (see the example above).
+5. **Add a `defs/<anything>/defs.yaml`** using the full component path (see the example above).
    Do not put a `defs.yaml` at the `defs/` root if you also use subfolders — a root file
    short-circuits component discovery. Each component belongs in its own subdirectory.
-5. **Make contract references resolvable.** Either use absolute/relative file paths, or set
+6. **Make contract references resolvable.** Either use absolute/relative file paths, or set
    `tool.dg.project.root_module` (or `trusted_prefixes`) in your `dg.toml`/`pyproject.toml`
    so dotted helpers such as `my_project.contracts.get_*` are trusted. The component derives
    the trusted prefixes from the **consuming** project, not from this repo.
-6. **Point `pipeline_name` at the pipeline that materializes each silver table.** The vault
+7. **Point `pipeline_name` at the pipeline that materializes each silver table.** The vault
    reads the Delta table at `<layer>/<table>` via the lakehouse resource and derives its
    source asset key as `[pipeline_name, layer, table]`.
-7. **Reload definitions.** Hubs, links, satellites, asset checks, and lineage are generated
+8. **Reload definitions.** Hubs, links, satellites, asset checks, and lineage are generated
    automatically; no Python changes are required.
+
+The package also ships its own unit tests under
+`packages/data-platform-datavault/tests`, so the extracted copy can be verified
+independently of this repository.
 
 ## Verification status
 
@@ -499,10 +526,10 @@ Spark 4.2.0, Delta 4.4.0):
 
 | Command | Result |
 | --- | --- |
-| `ruff format --check .` | 75 files already formatted |
+| `ruff format --check .` | 78 files already formatted |
 | `ruff check .` | all checks passed |
-| `mypy` (root config, all four `src/` trees) | no issues in 52 source files |
-| `pytest -m "not docker and not slow"` | 119 passed, 14 deselected |
+| `mypy` (root config, all five `src/` trees) | no issues in 54 source files |
+| `pytest -m "not docker and not slow"` | 123 passed, 13 deselected |
 | `pytest tests/smoke -m smoke` | 13 passed in 431.40s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |

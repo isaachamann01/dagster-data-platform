@@ -11,18 +11,20 @@ from dataclasses import dataclass, field
 
 import dagster as dg
 
-from data_platform_common.contracts.models import DataContract
-from data_platform_common.contracts.registry import ContractRegistry
-from data_platform_common.datavault.config import (
+from data_platform_datavault._common import (
+    METADATA_COLUMN_PREFIX,
+    ContractError,
+    ContractRegistry,
+    DataContract,
+)
+from data_platform_datavault.config import (
     DataVaultModelSpec,
     HubSpec,
     LinkSpec,
     SatelliteSpec,
     VaultSourceSpec,
 )
-from data_platform_common.datavault.hashing import HashAlgorithm
-from data_platform_common.errors import ContractError
-from data_platform_common.spark_types import METADATA_COLUMN_PREFIX
+from data_platform_datavault.hashing import HashAlgorithm
 
 HUB_KIND = "hub"
 LINK_KIND = "link"
