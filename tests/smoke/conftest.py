@@ -18,6 +18,10 @@ import uvicorn
 
 import data_contracts
 from data_platform_common.resources import build_resources_from_env
+from data_platform_datavault.components.data_vault_factory import (
+    NOOP_IO_MANAGER,
+    NOOP_IO_MANAGER_KEY,
+)
 from synthetic_api.app import create_app
 
 
@@ -61,7 +65,9 @@ def smoke_env(service_url: str, tmp_path_factory: pytest.TempPathFactory) -> dic
 
 @pytest.fixture(scope="session")
 def resources(smoke_env: dict[str, str]) -> dict[str, Any]:
-    return build_resources_from_env(smoke_env)
+    resources = build_resources_from_env(smoke_env)
+    resources[NOOP_IO_MANAGER_KEY] = NOOP_IO_MANAGER
+    return resources
 
 
 @pytest.fixture(scope="session")

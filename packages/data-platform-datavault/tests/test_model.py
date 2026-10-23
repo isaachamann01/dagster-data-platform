@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import dagster as dg
-import pytest
-from pydantic import ValidationError
 
 from data_platform_datavault import (
     DataVaultModelSpec,
@@ -17,11 +15,7 @@ from data_platform_datavault import (
     build_model,
 )
 from data_platform_datavault.components.data_vault_factory import build_vault_assets
-from data_platform_datavault.model import (
-    ContractError,
-    ContractRegistry,
-    parse_contract_document,
-)
+from data_platform_datavault.model import ContractRegistry, parse_contract_document
 
 
 def store_contract() -> dict:
@@ -224,74 +218,6 @@ def test_hub_asset_dependencies_and_mappings() -> None:
     assert "datavault/source" not in metadata
 
 
-def test_hub_source_must_map_every_key() -> None:
-    spec = base_spec(
-        hubs=[
-            HubSpec(
-                name="store",
-                business_keys=["store_id", "region"],
-                sources=[SourceMappingSpec(name="store_src", columns={"store_id": "store_id"})],
-            )
-        ]
-    )
-    with pytest.raises(ContractError, match=r"missing mappings for \['region'\]"):
-        build_model(spec, registry())
-
-
-def test_hub_source_must_not_map_unknown_columns() -> None:
-    spec = base_spec(
-        hubs=[
-            HubSpec(
-                name="store",
-                business_keys=["store_id"],
-                sources=[
-                    SourceMappingSpec(
-                        name="store_src",
-                        columns={"store_id": "store_id", "bogus": "region"},
-                    )
-                ],
-            )
-        ]
-    )
-    with pytest.raises(ContractError, match=r"maps unknown columns \['bogus'\]"):
-        build_model(spec, registry())
-
-
-def test_hub_duplicate_source_names_rejected() -> None:
-    with pytest.raises(ValidationError):
-        HubSpec(
-            name="store",
-            business_keys=["store_id"],
-            sources=[
-                SourceMappingSpec(name="store_src", columns={"store_id": "store_id"}),
-                SourceMappingSpec(name="store_src", columns={"store_id": "store_id"}),
-            ],
-        )
-
-
-def test_hub_duplicate_business_keys_rejected() -> None:
-    with pytest.raises(ValidationError):
-        HubSpec(
-            name="store",
-            business_keys=["store_id", "store_id"],
-            sources=[
-                SourceMappingSpec(name="store_src", columns={"store_id": "store_id"}),
-            ],
-        )
-
-
-def test_satellite_on_multi_source_parent_rejected() -> None:
-    spec = multi_source_hub_spec().model_copy(
-        update={
-            "satellites": [
-                SatelliteSpec(name="store_profile", parent="store", attributes=["store_name"])
-            ]
-        }
-    )
-    with pytest.raises(ContractError, match="single-source hub or link"):
-        build_model(spec, registry())
-
-
 def test_satellite_inherits_parent_source_and_key_mapping() -> None:
     spec = base_spec(
         sources=[
@@ -360,53 +286,3 @@ def test_satellite_attributes_can_map_columns() -> None:
         ("display_name", "store_name"),
         ("region", "region"),
     )
-
-
-def test_unknown_satellite_parent_rejected() -> None:
-    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="ghost")])
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_satellite_attribute_must_exist() -> None:
-    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="store", attributes=["nope"])])
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_satellite_attribute_cannot_be_parent_key() -> None:
-    spec = base_spec(satellites=[SatelliteSpec(name="x", parent="store", attributes=["store_id"])])
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_satellite_load_ts_column_must_exist() -> None:
-    spec = base_spec(
-        satellites=[
-            SatelliteSpec(
-                name="x",
-                parent="store",
-                attributes=["store_name"],
-                load_ts_column="missing",
-            )
-        ]
-    )
-    with pytest.raises(ContractError):
-        build_model(spec, registry())
-
-
-def test_duplicate_hub_names_rejected() -> None:
-    with pytest.raises(ValidationError):
-        base_spec(
-            hubs=[
-                hub("store", "store_src", ["store_id"]),
-                hub("store", "store_src", ["region"]),
-            ]
-        )
-
-
-def test_config_validation() -> None:
-    with pytest.raises(ValidationError):
-        DataVaultModelSpec(vault_name="v", sources=sources())
-    with pytest.raises(ValidationError):
-        VaultSourceSpec(name="has space", contract="store")

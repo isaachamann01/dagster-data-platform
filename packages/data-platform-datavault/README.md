@@ -58,8 +58,9 @@ Satellites inherit the source of their parent hub/link (currently the parent
 must have exactly one source). `attributes` lists canonical output names;
 `columns` optionally maps them to different source column names.
 
-The component needs the resources `spark`, `lakehouse`, `metadata`, and
-`delta_io_manager` (override with `resource_keys`).
+The component needs the resources `spark` and `lakehouse`. Vault assets write
+Delta directly through `DeltaTableWriter`; no IO manager or metadata resource is
+required.
 
 ## Porting to another common package
 
@@ -72,10 +73,9 @@ All host coupling lives in the host-import block at the top of
 | `DataContract` | Contract model with `columns` / `column_names` |
 | `ContractRegistry` | Resolves YAML and dotted contract references |
 | `parse_contract_document` | Parses inline contract mappings (used by tests) |
-| `ContractError` | Error raised for invalid vault models |
 | `build_trusted_prefixes` | Trusted dotted-import resolution |
 | `DeltaTableWriter` | Table existence checks and Delta access |
-| `META_*` | IO-manager metadata keys (write contract) |
+| `DeltaWriteOptions` / `WriteMode` | Direct Delta write options |
 | `METADATA_COLUMN_PREFIX` | Prefix excluded from satellite attributes |
 
 Everything else in the package is self-contained. Copy the directory or install

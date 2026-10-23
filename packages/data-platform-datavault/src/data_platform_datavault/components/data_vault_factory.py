@@ -15,38 +15,41 @@ from pyspark.sql.window import Window
 
 from data_platform_datavault.hashing import hash_expression
 from data_platform_datavault.model import (
-    META_LAYER,
-    META_MERGE_KEYS,
-    META_PARTITION_BY,
-    META_SCHEMA_EVOLUTION,
-    META_TABLE,
-    META_UPDATE_MATCHED,
-    META_WRITE_MODE,
     ContractRegistry,
     DataVaultModel,
     DataVaultModelSpec,
     DeltaTableWriter,
+    DeltaWriteOptions,
     HashConfig,
     ResolvedHub,
     ResolvedLink,
     ResolvedSatellite,
     ResolvedSource,
     ResolvedSourceMapping,
+    WriteMode,
     build_model,
     build_trusted_prefixes,
 )
 
+NOOP_IO_MANAGER_KEY = "vault_noop_io_manager"
+RESOURCE_KEYS = {"spark": "spark", "lakehouse": "lakehouse"}
+
+
+class _NoOpIOManager(dg.IOManager):
+    """Vault assets write Delta directly; this only satisfies Dagster's output plumbing."""
+
+    def handle_output(self, context: dg.OutputContext, obj: object) -> None:
+        pass
+
+    def load_input(self, context: dg.InputContext) -> None:
+        return None
+
+
+NOOP_IO_MANAGER = _NoOpIOManager()
+
 
 class DataVaultFactory(Component, DataVaultModelSpec):
     """Generate Data Vault 2.0 assets from silver contracts."""
-
-    def _resource_keys(self) -> dict[str, str]:
-        return {
-            "spark": self.resource_keys.get("spark", "spark"),
-            "lakehouse": self.resource_keys.get("lakehouse", "lakehouse"),
-            "metadata": self.resource_keys.get("metadata", "metadata"),
-            "io_manager": self.resource_keys.get("io_manager", "delta_io_manager"),
-        }
 
     def build_defs(self, context: ComponentLoadContext) -> dg.Definitions:
         prefixes = build_trusted_prefixes(
@@ -57,8 +60,10 @@ class DataVaultFactory(Component, DataVaultModelSpec):
             registry.resolve(extra_contract)
 
         model = build_model(self, registry)
-        keys = self._resource_keys()
-        return dg.Definitions(assets=build_vault_assets(model, keys))
+        return dg.Definitions(
+            assets=build_vault_assets(model, RESOURCE_KEYS),
+            resources={NOOP_IO_MANAGER_KEY: NOOP_IO_MANAGER},
+        )
 
 
 def read_source_table(spark: Any, lakehouse: Any, source: ResolvedSource) -> DataFrame:
@@ -122,16 +127,41 @@ def _dedupe_first_source(frame: DataFrame, hash_key: str) -> DataFrame:
     )
 
 
-def _vault_metadata(model: DataVaultModel, table: str, merge_keys: list[str]) -> dict[str, Any]:
-    return {
-        META_LAYER: model.layer,
-        META_TABLE: table,
-        META_WRITE_MODE: model.specification.write_mode,
-        META_MERGE_KEYS: merge_keys,
-        META_PARTITION_BY: [],
-        META_SCHEMA_EVOLUTION: True,
-        META_UPDATE_MATCHED: False,
-    }
+def _write_table(
+    context: dg.AssetExecutionContext,
+    spark: Any,
+    lakehouse: Any,
+    model: DataVaultModel,
+    table: str,
+    frame: DataFrame,
+    *,
+    merge_keys: list[str],
+) -> None:
+    """Write one vault table directly through the lakehouse Delta writer."""
+
+    result = DeltaTableWriter(spark).write(
+        frame,
+        DeltaWriteOptions(
+            path=lakehouse.table_path(model.layer, table),
+            mode=WriteMode(model.specification.write_mode),
+            merge_keys=tuple(merge_keys),
+            partition_by=(),
+            schema_evolution=True,
+            update_matched=False,
+        ),
+    )
+    context.add_output_metadata(
+        {
+            "delta/path": result.path,
+            "delta/write_mode": result.mode,
+            "delta/rows": result.rows_written,
+            "delta/schema": result.schema_json,
+            "delta/merge_keys": list(result.merge_keys),
+            "delta/partition_by": list(result.partition_by),
+            "delta/table_existed": result.table_existed,
+            **{f"delta/metrics/{key}": value for key, value in result.metrics.items()},
+        }
+    )
 
 
 def _now() -> datetime:
@@ -148,7 +178,6 @@ def build_hub_asset(
     }
 
     asset_metadata = {
-        **_vault_metadata(model, hub.table, [hub.hash_key]),
         "datavault/kind": "hub",
         "datavault/sources": source_names,
         "datavault/source_columns": source_columns,
@@ -161,15 +190,14 @@ def build_hub_asset(
         group_name=model.vault_name,
         kinds={"spark", "delta", "datavault"},
         deps=[*hub.source_asset_keys],
-        required_resource_keys={keys["spark"], keys["lakehouse"], keys["metadata"]},
-        io_manager_key=keys["io_manager"],
+        required_resource_keys={keys["spark"], keys["lakehouse"]},
+        io_manager_key=NOOP_IO_MANAGER_KEY,
         metadata=asset_metadata,
         description=f"Data Vault hub {hub.table} (business keys: {list(hub.business_keys)})",
     )
     def hub_asset(context: dg.AssetExecutionContext) -> Any:
         spark = getattr(context.resources, keys["spark"]).get_session()
         lakehouse = getattr(context.resources, keys["lakehouse"])
-        metadata_resource = getattr(context.resources, keys["metadata"])
         lakehouse.configure_spark(spark)
 
         unioned = _union_sources(
@@ -191,12 +219,9 @@ def build_hub_asset(
             F.lit(_now()).alias(spec.load_timestamp_column_name),
             F.col(spec.record_source_column_name),
         )
+        _write_table(context, spark, lakehouse, model, hub.table, result, merge_keys=[hub.hash_key])
         context.add_output_metadata(asset_metadata)
-        metadata_resource.record(
-            "vault_hub_loaded",
-            {"vault": model.vault_name, "table": hub.table, "sources": source_names},
-        )
-        return result
+        return None
 
     return hub_asset
 
@@ -211,7 +236,6 @@ def build_link_asset(
     }
 
     asset_metadata = {
-        **_vault_metadata(model, link.table, [link.hash_key]),
         "datavault/kind": "link",
         "datavault/sources": source_names,
         "datavault/source_columns": source_columns,
@@ -224,8 +248,8 @@ def build_link_asset(
         group_name=model.vault_name,
         kinds={"spark", "delta", "datavault"},
         deps=[*link.source_asset_keys, *link.parent_asset_keys],
-        required_resource_keys={keys["spark"], keys["lakehouse"], keys["metadata"]},
-        io_manager_key=keys["io_manager"],
+        required_resource_keys={keys["spark"], keys["lakehouse"]},
+        io_manager_key=NOOP_IO_MANAGER_KEY,
         metadata=asset_metadata,
         description=(
             "Data Vault link "
@@ -235,7 +259,6 @@ def build_link_asset(
     def link_asset(context: dg.AssetExecutionContext) -> Any:
         spark = getattr(context.resources, keys["spark"]).get_session()
         lakehouse = getattr(context.resources, keys["lakehouse"])
-        metadata_resource = getattr(context.resources, keys["metadata"])
         lakehouse.configure_spark(spark)
 
         unioned = _union_sources(
@@ -260,16 +283,11 @@ def build_link_asset(
             F.lit(_now()).alias(spec.load_timestamp_column_name),
             F.col(spec.record_source_column_name),
         )
-        context.add_output_metadata(asset_metadata)
-        metadata_resource.record(
-            "vault_link_loaded",
-            {
-                "vault": model.vault_name,
-                "table": link.table,
-                "sources": source_names,
-            },
+        _write_table(
+            context, spark, lakehouse, model, link.table, result, merge_keys=[link.hash_key]
         )
-        return result
+        context.add_output_metadata(asset_metadata)
+        return None
 
     return link_asset
 
@@ -279,9 +297,6 @@ def build_satellite_asset(
 ) -> dg.AssetsDefinition:
     spec = model.specification
     asset_metadata = {
-        **_vault_metadata(
-            model, satellite.table, [satellite.parent_hash_key, satellite.hashdiff_column]
-        ),
         "datavault/kind": "satellite",
         "datavault/source": satellite.source.name,
         "datavault/parent": f"{satellite.parent_kind}:{satellite.parent_name}",
@@ -295,8 +310,8 @@ def build_satellite_asset(
         group_name=model.vault_name,
         kinds={"spark", "delta", "datavault"},
         deps=[satellite.source.asset_key, satellite.parent_asset_key],
-        required_resource_keys={keys["spark"], keys["lakehouse"], keys["metadata"]},
-        io_manager_key=keys["io_manager"],
+        required_resource_keys={keys["spark"], keys["lakehouse"]},
+        io_manager_key=NOOP_IO_MANAGER_KEY,
         metadata=asset_metadata,
         description=(
             f"Data Vault satellite {satellite.table} on {satellite.parent_kind} "
@@ -306,7 +321,6 @@ def build_satellite_asset(
     def satellite_asset(context: dg.AssetExecutionContext) -> Any:
         spark = getattr(context.resources, keys["spark"]).get_session()
         lakehouse = getattr(context.resources, keys["lakehouse"])
-        metadata_resource = getattr(context.resources, keys["metadata"])
         lakehouse.configure_spark(spark)
 
         frame = read_source_table(spark, lakehouse, satellite.source)
@@ -344,12 +358,17 @@ def build_satellite_asset(
             F.lit(satellite.source.record_source).alias(spec.record_source_column_name),
             *[F.col(attribute) for attribute in satellite.attributes],
         ).dropDuplicates([satellite.parent_hash_key, satellite.hashdiff_column])
-        context.add_output_metadata(asset_metadata)
-        metadata_resource.record(
-            "vault_satellite_loaded",
-            {"vault": model.vault_name, "table": satellite.table, "source": satellite.source.name},
+        _write_table(
+            context,
+            spark,
+            lakehouse,
+            model,
+            satellite.table,
+            result,
+            merge_keys=[satellite.parent_hash_key, satellite.hashdiff_column],
         )
-        return result
+        context.add_output_metadata(asset_metadata)
+        return None
 
     return satellite_asset
 

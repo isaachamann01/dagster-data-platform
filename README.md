@@ -280,7 +280,9 @@ Partition keys propagate everywhere:
 
 ## Delta writes, merge, and idempotency
 
-The `DeltaLakeIOManager` receives write instructions from asset definition metadata and supports:
+Medallion assets go through `DeltaLakeIOManager`; vault assets call
+`DeltaTableWriter` directly from the asset body. Both use the same write options
+and support:
 
 | Mode | Behaviour |
 | --- | --- |
@@ -316,7 +318,7 @@ Shared resources are constructed by `build_resources_from_env()` and wired into 
 | `lakehouse` | `local` or `s3` (MinIO) table path resolution + Hadoop S3A options |
 | `trino` | optional query access; raises a clear error while disabled |
 | `metadata` | optional external metadata webhook; a no-op when unconfigured |
-| `delta_io_manager` | the Delta I/O manager used by all medallion assets |
+| `delta_io_manager` | the Delta I/O manager used by medallion assets; vault assets write Delta directly |
 
 See `env.example` for every variable and default. Notable ones:
 
@@ -507,11 +509,12 @@ All host-package coupling is isolated in the host-import block at the top of
    no dependency on `example_pipelines`.
 2. **Retarget the host imports if your common package differs.** `model.py` imports
    the host symbols (`DataContract`, `ContractRegistry`, `parse_contract_document`,
-   `ContractError`, `build_trusted_prefixes`, `DeltaTableWriter`, the `META_*`
-   write-contract keys, and `METADATA_COLUMN_PREFIX`). Point those imports at your
+   `build_trusted_prefixes`, `DeltaTableWriter`, `DeltaWriteOptions`, `WriteMode`,
+   and `METADATA_COLUMN_PREFIX`). Point those imports at your
    equivalent modules — that block is the entire porting surface. If your
    common package uses the same module layout, only the top-level package name changes.
-3. **Provide resources.** The vault needs `spark`, `lakehouse`, `metadata`, and `delta_io_manager`.
+3. **Provide resources.** The vault needs `spark` and `lakehouse`; it writes
+   Delta directly and does not use an IO manager or metadata resource.
    The simplest wiring is the shared environment builder in your `definitions.py`:
    ```python
    import dagster as dg
@@ -525,7 +528,7 @@ All host-package coupling is isolated in the host-import block at the top of
            dg.Definitions(resources=build_resources_from_env()),
        )
    ```
-   If your project already names resources differently, set `resource_keys` on the factory.
+   The vault uses the fixed resource names `spark` and `lakehouse`.
 4. **Describe the silver contracts** in your project (YAML) and expose path helpers, e.g.
    `my_project.contracts.get_store_silver_contract_path`.
 5. **Add a `defs/<anything>/defs.yaml`** using the full component path (see the example above).
@@ -555,8 +558,8 @@ Spark 4.2.0, Delta 4.4.0):
 | `ruff format --check .` | 74 files already formatted |
 | `ruff check .` | all checks passed |
 | `mypy` (root config, all five `src/` trees) | no issues in 50 source files |
-| `pytest -m "not docker and not slow"` | 120 passed, 12 deselected |
-| `pytest tests/smoke -m smoke` | 11 passed in 336.90s (Spark/Delta end-to-end, medallion + vault) |
+| `pytest -m "not docker and not slow"` | 109 passed, 12 deselected |
+| `pytest tests/smoke -m smoke` | 11 passed in 337.06s (Spark/Delta end-to-end, medallion + vault) |
 | `docker compose config` | valid |
 | `docker build -f docker/Dockerfile.api ...` | image built |
 | `docker build -f docker/Dockerfile.dagster ...` | image built |
